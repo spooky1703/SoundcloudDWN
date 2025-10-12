@@ -1,0 +1,7 @@
+AudioDownloaderPro.spec
+downloader_config.json
+downloader.log
+setup.py
+venv/
+dist/
+build/
