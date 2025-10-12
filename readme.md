@@ -1,4 +1,4 @@
-# README.md — Audio Downloader Pro (Documentación técnica completa)
+# Audio Downloader 
 
 > **Archivo fuente analizado:** `soundcloud_downloader_improved.py`. 
 
