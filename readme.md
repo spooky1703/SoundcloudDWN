@@ -1,4 +1,7 @@
-# Audio Downloader 
+<h1>
+  <img src="icono.jpg" alt="Logo" width="45" style="vertical-align: middle; margin-right: 10px;">
+  Audio Downloader
+</h1>
 
 > **Propósito de este README:** documentación técnica exhaustiva y lista para subir a GitHub. Explica la arquitectura, el flujo, las clases principales, opciones de configuración, dependencias, instalación, uso, y notas para desarrollo/depuración. Está pensada para que cualquier desarrollador pueda leerla, ejecutar el proyecto y entender el diseño interno.
 
