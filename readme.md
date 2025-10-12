@@ -1,7 +1,5 @@
 # Audio Downloader 
 
-> **Archivo fuente analizado:** `soundcloud_downloader_improved.py`. 
-
 > **Propósito de este README:** documentación técnica exhaustiva y lista para subir a GitHub. Explica la arquitectura, el flujo, las clases principales, opciones de configuración, dependencias, instalación, uso, y notas para desarrollo/depuración. Está pensada para que cualquier desarrollador pueda leerla, ejecutar el proyecto y entender el diseño interno.
 
 ---
@@ -402,11 +400,4 @@ __pycache__/
 
 * `soundcloud_downloader_improved.py` combina `yt-dlp`, FFmpeg y una GUI moderna hecha en Tkinter para ofrecer descargas y edición de metadatos con soporte de portadas personalizadas. La pieza central es `DownloaderThread` (descarga y postprocesos) y `EnhancedApp` (UI + gestión de hilos/colas). Revisa `ConfigManager` para persistencia y `mutagen`/`Pillow` para edición y vista previa.  
 
----
 
-¿Quieres que:
-
-* Genere un `README.md` ya guardado en el repositorio (archivo listo para descargar)?
-* O que prepare además un `requirements.txt`, `.gitignore` y un `LICENSE` (p.ej. MIT) listos para subir?
-
-Dime cuál prefieres y te los creo inmediatamente.
