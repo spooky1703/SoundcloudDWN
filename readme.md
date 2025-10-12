@@ -372,30 +372,6 @@ Explicación: mecanismo para informar a la UI del progreso y permitir cancelaci�
 
 ---
 
-## Cómo subir a Git (sugerencia de estructura)
-
-```
-/repo-root
-  ├─ soundcloud_downloader_improved.py
-  ├─ README.md          <-- ESTE archivo
-  ├─ requirements.txt
-  ├─ downloader_config.json (opcional, .gitignore si contiene rutas personales)
-  ├─ downloader.log      (agregar a .gitignore)
-  └─ LICENSE
-```
-
-**.gitignore** sugerido:
-
-```
-/downloader.log
-/downloader_config.json
-/.venv
-__pycache__/
-*.pyc
-```
-
----
-
 ## Cierre — Resumen rápido
 
 * `soundcloud_downloader_improved.py` combina `yt-dlp`, FFmpeg y una GUI moderna hecha en Tkinter para ofrecer descargas y edición de metadatos con soporte de portadas personalizadas. La pieza central es `DownloaderThread` (descarga y postprocesos) y `EnhancedApp` (UI + gestión de hilos/colas). Revisa `ConfigManager` para persistencia y `mutagen`/`Pillow` para edición y vista previa.  
