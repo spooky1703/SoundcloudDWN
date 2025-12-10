@@ -1,3 +1,0 @@
-pip install py2app
-py2applet --make-setup soundcloud_downloader_improved.py
-python setup.py py2app

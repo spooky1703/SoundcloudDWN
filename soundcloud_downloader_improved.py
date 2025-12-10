@@ -1,8 +1,3 @@
-"""
-soundcloud_downloader_improved.py
-Descargador GUI mejorado con yt-dlp - Versión con interfaz moderna y scrollbars
-"""
-
 import os
 import sys
 import threading
@@ -10,1788 +5,820 @@ import queue
 import time
 import json
 import logging
-import shutil
+import tempfile
+import urllib.request
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import yt_dlp
 
-# ---------------------------
-# Configuration & Constants
-# ---------------------------
+
 class Config:
     DEFAULT_BITRATE = "192"
     SUPPORTED_FORMATS = ["mp3", "m4a", "flac", "wav"]
     BITRATE_OPTIONS = ["320", "256", "192", "128", "96"]
     DEFAULT_OUT_TEMPLATE = "%(artist)s - %(title).200s.%(ext)s"
-    FALLBACK_TEMPLATE = "%(uploader)s - %(title).200s.%(ext)s"
     CONFIG_FILE = "downloader_config.json"
     LOG_FILE = "downloader.log"
-    MAX_LOG_SIZE = 1024 * 1024  # 1MB
-    SUPPORTED_IMAGE_FORMATS = [("Imágenes", "*.jpg *.jpeg *.png"), ("Todos los archivos", "*.*")]
+    PROVIDERS = {"SoundCloud": "scsearch1:", "YouTube Music": "ytsearch1:"}
 
-# ---------------------------
-# Modern Color Scheme
-# ---------------------------
-class Colors:
-    PRIMARY = "#2D3748"      # Gris oscuro elegante
-    SECONDARY = "#4A5568"    # Gris medio
-    ACCENT = "#667EEA"       # Púrpura moderno
-    ACCENT_HOVER = "#5A67D8" # Púrpura más oscuro
-    SUCCESS = "#48BB78"      # Verde éxito
-    WARNING = "#F6AD55"      # Naranja advertencia
-    ERROR = "#FC8181"        # Rojo error
-    BG_LIGHT = "#F7FAFC"     # Fondo claro
-    BG_CARD = "#FFFFFF"      # Fondo tarjetas
-    TEXT_DARK = "#2D3748"    # Texto oscuro
-    TEXT_LIGHT = "#718096"   # Texto claro
-    BORDER = "#E2E8F0"       # Bordes sutiles
 
-# ---------------------------
-# Scrollable Frame Widget
-# ---------------------------
-class ScrollableFrame(ttk.Frame):
-    """Frame con scrollbar vertical automática"""
-    def __init__(self, parent, **kwargs):
-        ttk.Frame.__init__(self, parent, **kwargs)
-        
-        # Canvas y Scrollbar
-        self.canvas = tk.Canvas(self, bg=Colors.BG_LIGHT, highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas, style="TFrame")
-        
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-        
-        self.canvas_frame = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        
-        # Bind para redimensionar el frame interior
-        self.canvas.bind('<Configure>', self._on_canvas_configure)
-        
-        # Layout
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-        
-        # Bind mouse wheel
-        self._bind_mouse_wheel()
-    
-    def _on_canvas_configure(self, event):
-        """Ajustar el ancho del frame interior al canvas"""
-        canvas_width = event.width
-        self.canvas.itemconfig(self.canvas_frame, width=canvas_width)
-    
-    def _bind_mouse_wheel(self):
-        """Bind mouse wheel y trackpad para scroll (optimizado para Mac)"""
-        def _on_mousewheel(event):
-            # Mac trackpad y mouse
-            if sys.platform == 'darwin':
-                self.canvas.yview_scroll(-1 * event.delta, "units")
-            # Windows
-            elif sys.platform == 'win32':
-                self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-            # Linux con mouse wheel
-            else:
-                if event.num == 4:
-                    self.canvas.yview_scroll(-1, "units")
-                elif event.num == 5:
-                    self.canvas.yview_scroll(1, "units")
-        
-        def _bind_to_mousewheel(event):
-            if sys.platform == 'darwin':
-                # Mac - usa MouseWheel para trackpad y mouse
-                self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
-            elif sys.platform == 'win32':
-                # Windows
-                self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
-            else:
-                # Linux
-                self.canvas.bind_all("<Button-4>", _on_mousewheel)
-                self.canvas.bind_all("<Button-5>", _on_mousewheel)
-        
-        def _unbind_from_mousewheel(event):
-            if sys.platform == 'darwin':
-                self.canvas.unbind_all("<MouseWheel>")
-            elif sys.platform == 'win32':
-                self.canvas.unbind_all("<MouseWheel>")
-            else:
-                self.canvas.unbind_all("<Button-4>")
-                self.canvas.unbind_all("<Button-5>")
-        
-        self.canvas.bind('<Enter>', _bind_to_mousewheel)
-        self.canvas.bind('<Leave>', _unbind_from_mousewheel)
-        
-        # Para Mac: bind directo adicional
-        if sys.platform == 'darwin':
-            self.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(-1 * e.delta, "units"))
+class ThemeDark:
+    name = "dark"
+    BG_MAIN = "#0D1117"
+    BG_CARD = "#161B22"
+    BG_INPUT = "#21262D"
+    BG_HOVER = "#30363D"
+    ACCENT = "#1DB954"
+    ACCENT_HOVER = "#1ED760"
+    ACCENT_ALT = "#8B5CF6"
+    SUCCESS = "#22C55E"
+    WARNING = "#F59E0B"
+    ERROR = "#EF4444"
+    TEXT_PRIMARY = "#E6EDF3"
+    TEXT_SECONDARY = "#8B949E"
+    TEXT_MUTED = "#484F58"
+    BORDER = "#30363D"
 
-# ---------------------------
-# Logging Setup
-# ---------------------------
+class ThemeLight:
+    name = "light"
+    BG_MAIN = "#FFFFFF"
+    BG_CARD = "#F6F8FA"
+    BG_INPUT = "#FFFFFF"
+    BG_HOVER = "#F3F4F6"
+    ACCENT = "#1DB954"
+    ACCENT_HOVER = "#1ED760"
+    ACCENT_ALT = "#8B5CF6"
+    SUCCESS = "#16A34A"
+    WARNING = "#D97706"
+    ERROR = "#DC2626"
+    TEXT_PRIMARY = "#1F2937"
+    TEXT_SECONDARY = "#6B7280"
+    TEXT_MUTED = "#9CA3AF"
+    BORDER = "#E5E7EB"
+
+# Global theme
+Theme = ThemeDark
+
+def set_theme(theme_class):
+    global Theme
+    Theme = theme_class
+
+
 def setup_logging():
-    """Configure logging with rotation"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(Config.LOG_FILE, encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
+                       handlers=[logging.FileHandler(Config.LOG_FILE, encoding='utf-8'), logging.StreamHandler(sys.stdout)])
     return logging.getLogger(__name__)
 
-# ---------------------------
-# Configuration Manager
-# ---------------------------
 class ConfigManager:
     def __init__(self):
-        self.config_path = Path(Config.CONFIG_FILE)
-        self.default_config = {
-            "output_dir": str(Path.home() / "Downloads"),
-            "bitrate": Config.DEFAULT_BITRATE,
-            "format": "mp3",
-            "template": Config.DEFAULT_OUT_TEMPLATE,
-            "create_artist_folders": False,
-            "skip_existing": True,
-            "max_concurrent": 3,
-            "save_cover_art": True,
-            "cover_format": "jpg",
-            "cover_size": "original"
-        }
+        self.path = Path(Config.CONFIG_FILE)
+        self.defaults = {"output_dir": str(Path.home() / "Downloads"), "bitrate": "192", "format": "mp3",
+                        "provider": "SoundCloud", "theme": "dark", "template": Config.DEFAULT_OUT_TEMPLATE}
     
-    def load_config(self) -> Dict[str, Any]:
-        """Load configuration from file"""
+    def load(self):
         try:
-            if self.config_path.exists():
-                with open(self.config_path, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                    return {**self.default_config, **config}
-        except Exception as e:
-            logging.warning(f"Failed to load config: {e}")
-        return self.default_config.copy()
+            if self.path.exists():
+                with open(self.path, 'r') as f:
+                    return {**self.defaults, **json.load(f)}
+        except: pass
+        return self.defaults.copy()
     
-    def save_config(self, config: Dict[str, Any]):
-        """Save configuration to file"""
+    def save(self, cfg):
         try:
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logging.error(f"Failed to save config: {e}")
+            with open(self.path, 'w') as f:
+                json.dump(cfg, f, indent=2)
+        except: pass
 
-# ---------------------------
-# Enhanced Downloader Thread
-# ---------------------------
+class QueueStatus:
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    COMPLETE = "complete"
+    ERROR = "error"
+    CANCELED = "canceled"
+
+class QueueItem:
+    def __init__(self, query: str):
+        self.query = query.strip()
+        self.status = QueueStatus.PENDING
+        self.progress = 0
+        self.title = query[:40] + "..." if len(query) > 40 else query
+        self.error = None
+        self.preview_url = None
+
 class DownloaderThread(threading.Thread):
-    def __init__(self, url: str, config: Dict[str, Any], progress_queue: queue.Queue, 
-                 stop_event: threading.Event, logger: logging.Logger, custom_cover: Optional[str] = None):
+    def __init__(self, item: QueueItem, config: dict, progress_q: queue.Queue, stop_event: threading.Event, provider: str):
         super().__init__(daemon=True)
-        self.url = url
+        self.item = item
         self.config = config
-        self.progress_queue = progress_queue
+        self.progress_q = progress_q
         self.stop_event = stop_event
-        self.logger = logger
-        self.download_info = {}
-        self.custom_cover = custom_cover
-        self.temp_cover_path = None
-        
+        self.provider = provider
+    
     def run(self):
         try:
             self._download()
         except Exception as e:
             if self.stop_event.is_set():
-                self.progress_queue.put(("canceled", "Descarga cancelada por usuario"))
+                self.progress_q.put(("item_status", self.item, QueueStatus.CANCELED, "Cancelado"))
             else:
-                self.logger.error(f"Download error: {e}")
-                self.progress_queue.put(("error", f"Error: {str(e)}"))
-        finally:
-            self._cleanup_temp_files()
-
-    def _cleanup_temp_files(self):
-        """Clean up temporary cover file if created"""
-        if self.temp_cover_path and os.path.exists(self.temp_cover_path):
-            try:
-                os.remove(self.temp_cover_path)
-            except Exception as e:
-                self.logger.warning(f"Failed to clean temp cover: {e}")
-
-    def _prepare_custom_cover(self, output_dir: Path) -> Optional[str]:
-        """Copy custom cover to temp location for processing"""
-        if not self.custom_cover or not os.path.exists(self.custom_cover):
-            return None
-        
-        try:
-            ext = Path(self.custom_cover).suffix
-            temp_name = f"temp_cover_{int(time.time())}{ext}"
-            self.temp_cover_path = str(output_dir / temp_name)
-            shutil.copy2(self.custom_cover, self.temp_cover_path)
-            return self.temp_cover_path
-        except Exception as e:
-            self.logger.error(f"Failed to prepare custom cover: {e}")
-            return None
-
+                self.progress_q.put(("item_status", self.item, QueueStatus.ERROR, str(e)))
+    
+    def _is_url(self, t):
+        return t.startswith('http://') or t.startswith('https://')
+    
     def _download(self):
-        """Main download logic with enhanced options and custom cover support"""
-        ffmpeg_path = None
-        if getattr(sys, 'frozen', False):
-            basedir = sys._MEIPASS
-            ffmpeg_path = os.path.join(basedir, 'ffmpeg')
-
         output_dir = Path(self.config['output_dir'])
-        
-        if self.config.get('create_artist_folders', False):
-            try:
-                with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
-                    info = ydl.extract_info(self.url, download=False)
-                    artist = info.get('artist') or info.get('uploader') or 'Unknown'
-                    output_dir = output_dir / self._sanitize_filename(artist)
-            except Exception:
-                pass
-        
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        custom_cover_path = self._prepare_custom_cover(output_dir)
-        if custom_cover_path:
-            self.progress_queue.put(("status", "Portada personalizada preparada"))
-        
-        template = self.config.get('template', Config.DEFAULT_OUT_TEMPLATE)
-        outtmpl = str(output_dir / template)
+        is_url = self._is_url(self.item.query)
+        search_prefix = Config.PROVIDERS.get(self.provider, "scsearch1:")
         
         ydl_opts = {
+            # MÁXIMA CALIDAD: descargar el mejor audio disponible
             'format': 'bestaudio/best',
-            'outtmpl': outtmpl,
-            'noplaylist': True,
-            'quiet': True,
-            'no_warnings': True,
-            'progress_hooks': [self._progress_hook],
-            'extract_flat': False,
-            'writethumbnail': not custom_cover_path,
-            'writeinfojson': False,
-            'embedthumbnail': False,
-            'restrictfilenames': False,
-            'nocheckcertificate': True,
-            'socket_timeout': 30,
-            'retries': 3,
-            'fragment_retries': 3,
-            'skip_download': False,
+            'format_sort': ['quality', 'abr', 'asr'],
+            'format_sort_force': True,
+            'outtmpl': str(output_dir / self.config.get('template', Config.DEFAULT_OUT_TEMPLATE)),
+            'noplaylist': True, 'quiet': True, 'no_warnings': True,
+            'progress_hooks': [self._hook],
+            'writethumbnail': True, 'nocheckcertificate': True, 'socket_timeout': 30,
+            # Postprocesadores con máxima calidad
+            'postprocessors': [
+                {
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': self.config.get('format', 'mp3'),
+                    'preferredquality': '320',  # CBR 320kbps
+                },
+                {'key': 'FFmpegMetadata', 'add_metadata': True},
+                {'key': 'EmbedThumbnail'}
+            ],
+            # Argumentos EXPLÍCITOS para FFmpeg - máxima calidad
+            'postprocessor_args': [
+                '-b:a', '320k',           # Bitrate 320kbps CBR
+                '-ar', '48000',           # Sample rate 48kHz
+                '-ac', '2',               # Stereo
+            ],
         }
         
-        if ffmpeg_path:
-            ydl_opts['ffmpeg_location'] = ffmpeg_path
+        if not is_url:
+            ydl_opts['default_search'] = search_prefix.rstrip(':')
         
-        if self.config.get('skip_existing', True):
-            ydl_opts['overwrites'] = False
-        
-        audio_format = self.config.get('format', 'mp3')
-        bitrate = self.config.get('bitrate', Config.DEFAULT_BITRATE)
-        
-        postprocessors = []
-        
-        if audio_format in ['mp3', 'm4a', 'flac', 'wav']:
-            postprocessors.append({
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': audio_format,
-                'preferredquality': bitrate,
-            })
-        
-        postprocessors.append({
-            'key': 'FFmpegMetadata',
-            'add_metadata': True,
-        })
-        
-        if custom_cover_path:
-            pass
-        elif self.config.get('save_cover_art', True):
-            postprocessors.append({
-                'key': 'EmbedThumbnail',
-                'already_have_thumbnail': False,
-            })
-        
-        ydl_opts['postprocessors'] = postprocessors
-        
-        self.progress_queue.put(("status", "Extrayendo información..."))
+        self.progress_q.put(("item_status", self.item, QueueStatus.DOWNLOADING, None))
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(self.url, download=False)
+            search_q = self.item.query if is_url else f"{search_prefix}{self.item.query}"
+            info = ydl.extract_info(search_q, download=False)
             
-            self.download_info = {
-                'title': info.get('title', 'Unknown'),
-                'artist': info.get('artist') or info.get('uploader', 'Unknown'),
-                'duration': info.get('duration'),
-                'description': info.get('description', ''),
-                'webpage_url': info.get('webpage_url', self.url)
-            }
+            if info.get('_type') == 'playlist' and info.get('entries'):
+                info = info['entries'][0]
             
-            self.progress_queue.put(("info", self.download_info))
-            self.progress_queue.put(("status", "Iniciando descarga..."))
+            self.item.title = info.get('title', self.item.query)[:50]
+            self.item.preview_url = info.get('webpage_url') or info.get('url')  # URL for preview
             
-            ydl.download([self.url])
+            self.progress_q.put(("item_update", self.item))
             
-            if custom_cover_path and not self.stop_event.is_set():
-                self._embed_custom_cover(output_dir, audio_format, custom_cover_path, ffmpeg_path)
+            ydl.download([info.get('webpage_url') or search_q])
             
             if not self.stop_event.is_set():
-                self.progress_queue.put(("complete", "Descarga completada exitosamente"))
-
-    def _embed_custom_cover(self, output_dir: Path, audio_format: str, cover_path: str, ffmpeg_path: Optional[str]):
-        """Embed custom cover art into the downloaded audio file"""
-        try:
-            self.progress_queue.put(("status", "Incrustando portada personalizada..."))
-            
-            audio_files = list(output_dir.glob(f"*.{audio_format}"))
-            if not audio_files:
-                self.logger.warning("No audio file found to embed cover")
-                return
-            
-            audio_file = max(audio_files, key=os.path.getctime)
-            temp_output = audio_file.with_suffix(f'.temp{audio_file.suffix}')
-            
-            ffmpeg_cmd = self._build_ffmpeg_command(ffmpeg_path, audio_file, cover_path, temp_output, audio_format)
-            
-            import subprocess
-            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                os.replace(temp_output, audio_file)
-                self.progress_queue.put(("status", "Portada personalizada incrustada exitosamente"))
-            else:
-                self.logger.error(f"FFmpeg error: {result.stderr}")
-                if temp_output.exists():
-                    temp_output.unlink()
-                self.progress_queue.put(("status", "Advertencia: No se pudo incrustar la portada personalizada"))
-                
-        except Exception as e:
-            self.logger.error(f"Failed to embed custom cover: {e}")
-            self.progress_queue.put(("status", "Advertencia: Error al incrustar portada personalizada"))
-
-    def _build_ffmpeg_command(self, ffmpeg_path: Optional[str], audio_file: Path, 
-                             cover_path: str, output: Path, audio_format: str) -> list:
-        """Build appropriate FFmpeg command for embedding cover"""
-        ffmpeg_exe = ffmpeg_path if ffmpeg_path else 'ffmpeg'
-        
-        if audio_format == 'mp3':
-            return [
-                ffmpeg_exe, '-i', str(audio_file), '-i', cover_path,
-                '-map', '0:a', '-map', '1:0',
-                '-c:a', 'copy', '-c:v', 'mjpeg',
-                '-disposition:v', 'attached_pic',
-                '-id3v2_version', '3',
-                '-metadata:s:v', 'title=Album cover',
-                '-metadata:s:v', 'comment=Cover (front)',
-                '-y', str(output)
-            ]
-        elif audio_format == 'm4a':
-            return [
-                ffmpeg_exe, '-i', str(audio_file), '-i', cover_path,
-                '-map', '0:a', '-map', '1:0',
-                '-c:a', 'copy', '-c:v', 'mjpeg',
-                '-disposition:v', 'attached_pic',
-                '-y', str(output)
-            ]
-        elif audio_format == 'flac':
-            return [
-                ffmpeg_exe, '-i', str(audio_file), '-i', cover_path,
-                '-map', '0:a', '-map', '1:0',
-                '-c:a', 'copy', '-c:v', 'mjpeg',
-                '-disposition:v', 'attached_pic',
-                '-metadata:s:v', 'title=Album cover',
-                '-metadata:s:v', 'comment=Cover (front)',
-                '-y', str(output)
-            ]
-        else:
-            return [
-                ffmpeg_exe, '-i', str(audio_file), '-i', cover_path,
-                '-map', '0', '-map', '1',
-                '-c:a', 'copy', '-c:v', 'copy',
-                '-disposition:v', 'attached_pic',
-                '-y', str(output)
-            ]
-
-    def _progress_hook(self, d):
+                self.progress_q.put(("item_status", self.item, QueueStatus.COMPLETE, None))
+    
+    def _hook(self, d):
         if self.stop_event.is_set():
-            raise yt_dlp.DownloadError("User cancelled")
-        
-        status = d.get('status')
-        
-        if status == 'downloading':
-            self._handle_download_progress(d)
-        elif status == 'finished':
-            filename = Path(d.get('filename', '')).name
-            self.progress_queue.put(("status", f"Descarga finalizada: {filename}"))
-            self.progress_queue.put(("status", "Procesando audio..."))
-        elif status == 'error':
-            error_msg = d.get('error', 'Unknown error')
-            self.progress_queue.put(("error", f"Error en descarga: {error_msg}"))
+            raise yt_dlp.DownloadError("Cancelled")
+        if d.get('status') == 'downloading':
+            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+            done = d.get('downloaded_bytes', 0)
+            if total > 0:
+                self.item.progress = int(done / total * 100)
+                self.progress_q.put(("item_progress", self.item))
 
-    def _handle_download_progress(self, d):
-        downloaded = d.get('downloaded_bytes', 0)
-        total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-        speed = d.get('speed', 0)
-        eta = d.get('eta', 0)
-        filename = Path(d.get('filename', '')).name
-        
-        percent = None
-        if total > 0:
-            percent = min(100.0, (downloaded / total) * 100.0)
-        
-        progress_info = {
-            'percent': percent,
-            'downloaded': downloaded,
-            'total': total,
-            'speed': speed,
-            'eta': eta,
-            'filename': filename
-        }
-        self.progress_queue.put(("progress", progress_info))
-
-    def _sanitize_filename(self, filename: str) -> str:
-        invalid_chars = '<>:"/\\|?*'
-        for char in invalid_chars:
-            filename = filename.replace(char, '')
-        return filename.strip()
+class QueueManager:
+    def __init__(self, config: dict, progress_q: queue.Queue, provider: str):
+        self.queue: List[QueueItem] = []
+        self.config = config
+        self.progress_q = progress_q
+        self.provider = provider
+        self.current_worker = None
+        self.stop_event = threading.Event()
+        self.running = False
+    
+    def add_items(self, queries: List[str]):
+        for q in queries:
+            if q.strip():
+                self.queue.append(QueueItem(q))
+    
+    def start(self):
+        if not self.running and self.queue:
+            self.running = True
+            self.stop_event.clear()
+            self._process_next()
+    
+    def _process_next(self):
+        pending = [i for i in self.queue if i.status == QueueStatus.PENDING]
+        if pending and not self.stop_event.is_set():
+            item = pending[0]
+            self.current_worker = DownloaderThread(item, self.config, self.progress_q, self.stop_event, self.provider)
+            self.current_worker.start()
+        else:
+            self.running = False
+            self.progress_q.put(("queue_complete", None))
+    
+    def on_item_done(self):
+        if self.running:
+            self._process_next()
+    
+    def cancel_all(self):
+        self.stop_event.set()
+        for item in self.queue:
+            if item.status == QueueStatus.PENDING:
+                item.status = QueueStatus.CANCELED
+        self.running = False
+    
+    def clear(self):
+        self.queue = []
 
 # ---------------------------
-# Modern UI Components
+# Mini Player (Preview)
+# ---------------------------
+class MiniPlayer:
+    def __init__(self):
+        self.playing = False
+        self.mixer_init = False
+        self.temp_file = None
+    
+    def init_mixer(self):
+        if not self.mixer_init:
+            try:
+                import pygame
+                pygame.mixer.init()
+                self.mixer_init = True
+            except ImportError:
+                return False
+        return True
+    
+    def play_preview(self, webpage_url: str, callback=None):
+        """Download preview using yt-dlp and play it"""
+        if not webpage_url or not self.init_mixer():
+            if callback:
+                callback(False, "pygame no disponible")
+            return False
+        
+        def _download_and_play():
+            try:
+                import pygame
+                import glob
+                
+                # Create temp directory for preview
+                temp_dir = tempfile.mkdtemp()
+                temp_base = os.path.join(temp_dir, 'preview')
+                
+                # Download at low quality for faster preview
+                ydl_opts = {
+                    'format': 'worstaudio/worst',  # Lowest quality for speed
+                    'outtmpl': temp_base + '.%(ext)s',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True,
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '64',  # Low quality for preview
+                    }],
+                }
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([webpage_url])
+                
+                # Find the downloaded mp3 file
+                mp3_files = glob.glob(os.path.join(temp_dir, '*.mp3'))
+                
+                if mp3_files and os.path.getsize(mp3_files[0]) > 0:
+                    pygame.mixer.music.load(mp3_files[0])
+                    pygame.mixer.music.play()
+                    self.playing = True
+                    self.temp_file = type('obj', (object,), {'name': mp3_files[0], 'dir': temp_dir})()
+                    if callback:
+                        callback(True)
+                else:
+                    if callback:
+                        callback(False, "No se encontró archivo")
+                    # Cleanup
+                    import shutil
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                        
+            except Exception as e:
+                if callback:
+                    callback(False, str(e)[:40])
+        
+        threading.Thread(target=_download_and_play, daemon=True).start()
+        return True
+    
+    def stop(self):
+        if self.mixer_init:
+            try:
+                import pygame
+                pygame.mixer.music.stop()
+            except: pass
+        self.playing = False
+        if self.temp_file and hasattr(self.temp_file, 'name') and os.path.exists(self.temp_file.name):
+            try: os.unlink(self.temp_file.name)
+            except: pass
+
+# ---------------------------
+# Modern Button
 # ---------------------------
 class ModernButton(tk.Canvas):
-    """Custom modern button with hover effects"""
-    def __init__(self, parent, text, command, bg_color=Colors.ACCENT, 
-                 fg_color="white", width=120, height=40, **kwargs):
-        super().__init__(parent, width=width, height=height, 
-                        highlightthickness=0, **kwargs)
+    def __init__(self, parent, text, command, bg_color=None, fg_color=None, width=140, height=44, **kw):
+        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=Theme.BG_MAIN, **kw)
         self.command = command
-        self.bg_color = bg_color
-        self.hover_color = Colors.ACCENT_HOVER
-        self.fg_color = fg_color
+        self.bg_color = bg_color or Theme.ACCENT
+        self.fg_color = fg_color or Theme.BG_MAIN
         self.text = text
-        self.width = width
-        self.height = height
+        self.w, self.h = width, height
         self.enabled = True
-        
-        self._draw_button()
-        self.bind("<Button-1>", self._on_click)
-        self.bind("<Enter>", self._on_enter)
-        self.bind("<Leave>", self._on_leave)
+        self._draw()
+        self.bind("<Button-1>", self._click)
+        self.bind("<Enter>", lambda e: self._draw(True) if self.enabled else None)
+        self.bind("<Leave>", lambda e: self._draw())
     
-    def _draw_button(self, hover=False):
+    def _draw(self, hover=False):
         self.delete("all")
-        color = self.hover_color if hover and self.enabled else self.bg_color
-        if not self.enabled:
-            color = Colors.TEXT_LIGHT
-        
-        # Rounded rectangle
-        self.create_rounded_rect(0, 0, self.width, self.height, 8, fill=color, outline="")
-        self.create_text(self.width//2, self.height//2, text=self.text, 
-                        fill=self.fg_color, font=('Segoe UI', 10, 'bold'))
+        c = Theme.ACCENT_HOVER if hover and self.enabled else self.bg_color
+        if not self.enabled: c = Theme.TEXT_MUTED
+        r = 10
+        x1, y1, x2, y2 = 1, 1, self.w-1, self.h-1
+        pts = [x1+r,y1, x2-r,y1, x2,y1, x2,y1+r, x2,y2-r, x2,y2, x2-r,y2, x1+r,y2, x1,y2, x1,y2-r, x1,y1+r, x1,y1]
+        self.create_polygon(pts, smooth=True, fill=c)
+        self.create_text(self.w//2, self.h//2, text=self.text, fill=self.fg_color, font=('SF Pro Display', 11, 'bold'))
     
-    def create_rounded_rect(self, x1, y1, x2, y2, radius, **kwargs):
-        points = [x1+radius, y1,
-                 x1+radius, y1,
-                 x2-radius, y1,
-                 x2-radius, y1,
-                 x2, y1,
-                 x2, y1+radius,
-                 x2, y1+radius,
-                 x2, y2-radius,
-                 x2, y2-radius,
-                 x2, y2,
-                 x2-radius, y2,
-                 x2-radius, y2,
-                 x1+radius, y2,
-                 x1+radius, y2,
-                 x1, y2,
-                 x1, y2-radius,
-                 x1, y2-radius,
-                 x1, y1+radius,
-                 x1, y1+radius,
-                 x1, y1]
-        return self.create_polygon(points, smooth=True, **kwargs)
+    def _click(self, e):
+        if self.enabled and self.command: self.command()
     
-    def _on_click(self, event):
-        if self.enabled and self.command:
-            self.command()
+    def set_enabled(self, e):
+        self.enabled = e
+        self._draw()
     
-    def _on_enter(self, event):
-        if self.enabled:
-            self._draw_button(hover=True)
-    
-    def _on_leave(self, event):
-        self._draw_button(hover=False)
-    
-    def configure_state(self, state):
-        self.enabled = (state != "disabled")
-        self._draw_button()
+    def update_theme(self):
+        self.config(bg=Theme.BG_MAIN)
+        self._draw()
 
 # ---------------------------
-# Enhanced GUI Application
+# Main App
 # ---------------------------
-class EnhancedApp:
+class AudioDownloaderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Audio Downloader Pro - YouTube & SoundCloud")
-        self.root.geometry("900x750")
-        self.root.minsize(800, 650)
+        self.root.title("Audio Downloader Pro")
+        self.root.geometry("700x800")
+        self.root.minsize(600, 700)
         
-        # Configure colors
-        self.root.configure(bg=Colors.BG_LIGHT)
-
-        # Custom style
-        self._configure_styles()
-
-        # Initialize components
         self.logger = setup_logging()
-        self.config_manager = ConfigManager()
-        self.config = self.config_manager.load_config()
-
+        self.config_mgr = ConfigManager()
+        self.config = self.config_mgr.load()
+        
+        # Set theme from config
+        if self.config.get('theme') == 'light':
+            set_theme(ThemeLight)
+        
+        self.root.configure(bg=Theme.BG_MAIN)
+        self._configure_styles()
+        
         # Variables
-        self.url_var = tk.StringVar()
-        self.outdir_var = tk.StringVar(value=self.config['output_dir'])
-        self.bitrate_var = tk.StringVar(value=self.config['bitrate'])
-        self.format_var = tk.StringVar(value=self.config['format'])
-        self.artist_folder_var = tk.BooleanVar(value=self.config['create_artist_folders'])
-        self.skip_existing_var = tk.BooleanVar(value=self.config['skip_existing'])
-        self.save_cover_var = tk.BooleanVar(value=self.config.get('save_cover_art', True))
-        self.cover_format_var = tk.StringVar(value=self.config.get('cover_format', 'jpg'))
+        self.provider_var = tk.StringVar(value=self.config.get('provider', 'SoundCloud'))
+        self.format_var = tk.StringVar(value=self.config.get('format', 'mp3'))
+        self.bitrate_var = tk.StringVar(value=self.config.get('bitrate', '192'))
+        self.outdir_var = tk.StringVar(value=self.config.get('output_dir', str(Path.home() / "Downloads")))
+        self.theme_var = tk.StringVar(value=self.config.get('theme', 'dark'))
         
-        self.custom_cover_path = None
-        self.use_custom_cover_var = tk.BooleanVar(value=False)
+        # Queue & Player
+        self.progress_q = queue.Queue()
+        self.queue_mgr = QueueManager(self.config, self.progress_q, self.provider_var.get())
+        self.player = MiniPlayer()
+        self.selected_item: Optional[QueueItem] = None
         
-        # Variables para el editor
-        self.editor_file_path = None
-        self.editor_cover_path = None
-        self.editor_title_var = tk.StringVar()
-        self.editor_artist_var = tk.StringVar()
-        self.editor_album_var = tk.StringVar()
-        self.editor_year_var = tk.StringVar()
-        self.editor_genre_var = tk.StringVar()
-
-        # Queues and threading
-        self.progress_queue = queue.Queue()
-        self.stop_event = threading.Event()
-        self.worker = None
-        self.download_info = {}
-
-        self._build_modern_ui()
+        # Editor vars
+        self.editor_file = None
+        self.editor_cover = None
+        self.editor_title = tk.StringVar()
+        self.editor_artist = tk.StringVar()
+        self.editor_album = tk.StringVar()
+        
+        self._build_ui()
         self._periodic_check()
-
-        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
-
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+    
     def _configure_styles(self):
-        """Configure modern ttk styles"""
         style = ttk.Style()
         style.theme_use('clam')
+        style.configure("Dark.TNotebook", background=Theme.BG_MAIN, borderwidth=0)
+        style.configure("Dark.TNotebook.Tab", background=Theme.BG_CARD, foreground=Theme.TEXT_SECONDARY,
+                       padding=[18, 10], font=('SF Pro Display', 10))
+        style.map("Dark.TNotebook.Tab", background=[("selected", Theme.ACCENT)], foreground=[("selected", Theme.BG_MAIN)])
+        style.configure("TCombobox", fieldbackground=Theme.BG_INPUT, background=Theme.BG_INPUT, foreground=Theme.TEXT_PRIMARY)
+    
+    def _build_ui(self):
+        # Header with theme toggle
+        header = tk.Frame(self.root, bg=Theme.BG_MAIN)
+        header.pack(fill=tk.X, padx=25, pady=(20, 10))
         
-        # Configure notebook
-        style.configure("TNotebook", background=Colors.BG_LIGHT, borderwidth=0)
-        style.configure("TNotebook.Tab", 
-                       background=Colors.BG_CARD,
-                       foreground=Colors.TEXT_DARK,
-                       padding=[20, 10],
-                       font=('Segoe UI', 10))
-        style.map("TNotebook.Tab",
-                 background=[("selected", Colors.ACCENT)],
-                 foreground=[("selected", "white")])
+        left = tk.Frame(header, bg=Theme.BG_MAIN)
+        left.pack(side=tk.LEFT)
         
-        # Configure frames
-        style.configure("Card.TFrame", background=Colors.BG_CARD, relief="flat")
-        style.configure("TFrame", background=Colors.BG_LIGHT)
+        tk.Label(left, text="🎵", font=('SF Pro Display', 26), bg=Theme.BG_MAIN, fg=Theme.ACCENT).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(left, text="Audio Downloader Pro", font=('SF Pro Display', 20, 'bold'),
+                bg=Theme.BG_MAIN, fg=Theme.TEXT_PRIMARY).pack(side=tk.LEFT)
         
-        # Configure labels
-        style.configure("TLabel", background=Colors.BG_LIGHT, 
-                       foreground=Colors.TEXT_DARK, font=('Segoe UI', 10))
-        style.configure("Title.TLabel", font=('Segoe UI', 14, 'bold'))
-        style.configure("Subtitle.TLabel", font=('Segoe UI', 11), 
-                       foreground=Colors.TEXT_LIGHT)
-        
-        # Configure entries
-        style.configure("TEntry", fieldbackground="white", 
-                       borderwidth=1, relief="solid")
-        
-        # Configure checkbuttons
-        style.configure("TCheckbutton", background=Colors.BG_CARD,
-                       font=('Segoe UI', 10))
-        
-        # Configure combobox
-        style.configure("TCombobox", fieldbackground="white")
-        
-        # Configure progressbar
-        style.configure("Custom.Horizontal.TProgressbar",
-                       background=Colors.ACCENT,
-                       troughcolor=Colors.BORDER,
-                       borderwidth=0,
-                       lightcolor=Colors.ACCENT,
-                       darkcolor=Colors.ACCENT)
-
-    def _build_modern_ui(self):
-        # Header
-        header = tk.Frame(self.root, bg=Colors.PRIMARY, height=90)
-        header.pack(fill=tk.X, side=tk.TOP)
-        header.pack_propagate(False)
-        
-        title_label = tk.Label(header, text="Audio Downloader Pro", 
-                              bg=Colors.PRIMARY, fg="white",
-                              font=('Segoe UI', 20, 'bold'))
-        title_label.pack(pady=20)
-        
-        subtitle = tk.Label(header, text="Descarga audio de YouTube, SoundCloud y más",
-                           bg=Colors.PRIMARY, fg=Colors.BG_LIGHT,
-                           font=('Segoe UI', 10))
-        subtitle.pack()
-
-        # Main container
-        main_container = tk.Frame(self.root, bg=Colors.BG_LIGHT)
-        main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        # Theme toggle
+        self.theme_btn = tk.Button(header, text="🌙" if Theme.name == "dark" else "☀️", font=('SF Pro Display', 16),
+                                  bg=Theme.BG_CARD, fg=Theme.TEXT_PRIMARY, relief=tk.FLAT, cursor="hand2",
+                                  command=self._toggle_theme)
+        self.theme_btn.pack(side=tk.RIGHT)
         
         # Notebook
-        self.notebook = ttk.Notebook(main_container)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
-
-        # Crear frames scrolleables
-        self.download_frame = ScrollableFrame(self.notebook)
-        self.notebook.add(self.download_frame, text="  Descarga  ")
-
-        self.settings_frame = ScrollableFrame(self.notebook)
-        self.notebook.add(self.settings_frame, text="  Configuración  ")
-
-        self.info_frame = ScrollableFrame(self.notebook)
-        self.notebook.add(self.info_frame, text="  Acerca de  ")
-        
-        self.editor_frame = ScrollableFrame(self.notebook)
-        self.notebook.add(self.editor_frame, text="  Editor de Metadatos  ")
-
-        self._build_download_tab()
-        self._build_settings_tab()
-        self._build_info_tab()
-        self._build_editor_tab()
-
-    def _create_card_frame(self, parent, title):
-        """Create a modern card-style frame"""
-        container = tk.Frame(parent, bg=Colors.BG_LIGHT)
-        
-        card = tk.Frame(container, bg=Colors.BG_CARD, relief="flat", 
-                       highlightbackground=Colors.BORDER, highlightthickness=1)
-        card.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
-        if title:
-            header = tk.Frame(card, bg=Colors.BG_CARD)
-            header.pack(fill=tk.X, padx=20, pady=(15, 10))
-            tk.Label(header, text=title, bg=Colors.BG_CARD,
-                    fg=Colors.TEXT_DARK, font=('Segoe UI', 12, 'bold')).pack(anchor="w")
-            
-            separator = tk.Frame(card, bg=Colors.BORDER, height=1)
-            separator.pack(fill=tk.X, padx=20)
-        
-        content = tk.Frame(card, bg=Colors.BG_CARD)
-        content.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
-        
-        return container, content
-
-    def _build_download_tab(self):
-        # Usar scrollable_frame en lugar de download_frame directamente
-        frame = self.download_frame.scrollable_frame
-        frame.configure(style="TFrame")
-
-        # URL Card
-        url_card_container, url_content = self._create_card_frame(frame, "URL del Audio o Video")
-        url_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        # Descripción de plataformas soportadas
-        platforms_frame = tk.Frame(url_content, bg=Colors.BG_CARD)
-        platforms_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        tk.Label(platforms_frame, text="Plataformas soportadas:", bg=Colors.BG_CARD,
-                fg=Colors.TEXT_LIGHT, font=('Segoe UI', 9, 'italic')).pack(side=tk.LEFT, padx=(0, 8))
-        
-        platforms = ["YouTube", "SoundCloud", "Bandcamp", "Mixcloud", "y más..."]
-        tk.Label(platforms_frame, text=" • ".join(platforms), bg=Colors.BG_CARD,
-                fg=Colors.ACCENT, font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT)
-        
-        url_frame = tk.Frame(url_content, bg=Colors.BG_CARD)
-        url_frame.pack(fill=tk.X)
-        
-        self.url_entry = tk.Entry(url_frame, textvariable=self.url_var, 
-                                 font=('Segoe UI', 11), relief="solid",
-                                 borderwidth=1, bg="white", fg=Colors.TEXT_DARK)
-        self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=8, padx=(0, 10))
-        self.url_entry.focus()
-        
-        # Placeholder text
-        self.url_entry.insert(0, "Ej: https://youtube.com/watch?v=... o https://soundcloud.com/...")
-        self.url_entry.config(fg=Colors.TEXT_LIGHT)
-        
-        def on_url_focus_in(event):
-            if self.url_entry.get() == "Ej: https://youtube.com/watch?v=... o https://soundcloud.com/...":
-                self.url_entry.delete(0, tk.END)
-                self.url_entry.config(fg=Colors.TEXT_DARK)
-        
-        def on_url_focus_out(event):
-            if not self.url_entry.get():
-                self.url_entry.insert(0, "Ej: https://youtube.com/watch?v=... o https://soundcloud.com/...")
-                self.url_entry.config(fg=Colors.TEXT_LIGHT)
-        
-        self.url_entry.bind("<FocusIn>", on_url_focus_in)
-        self.url_entry.bind("<FocusOut>", on_url_focus_out)
-        
-        paste_btn = ModernButton(url_frame, "Pegar", self._paste_from_clipboard, 
-                                width=100, height=36)
-        paste_btn.pack(side=tk.RIGHT)
-
-        # Custom Cover Card
-        cover_card_container, cover_content = self._create_card_frame(frame, "Portada Personalizada")
-        cover_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        check_frame = tk.Frame(cover_content, bg=Colors.BG_CARD)
-        check_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.use_custom_cover_check = ttk.Checkbutton(
-            check_frame, 
-            text="Usar portada personalizada", 
-            variable=self.use_custom_cover_var,
-            command=self._toggle_custom_cover,
-            style="TCheckbutton"
-        )
-        self.use_custom_cover_check.pack(anchor="w")
-        
-        file_frame = tk.Frame(cover_content, bg=Colors.BG_CARD)
-        file_frame.pack(fill=tk.X)
-        
-        tk.Label(file_frame, text="Imagen:", bg=Colors.BG_CARD,
-                fg=Colors.TEXT_DARK, font=('Segoe UI', 10)).pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.cover_path_label = tk.Label(file_frame, text="Ninguna seleccionada",
-                                         bg=Colors.BG_CARD, fg=Colors.TEXT_LIGHT,
-                                         font=('Segoe UI', 10), anchor="w")
-        self.cover_path_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        self.browse_cover_button = ModernButton(file_frame, "Seleccionar",
-                                               self._choose_custom_cover, 
-                                               width=100, height=32)
-        self.browse_cover_button.pack(side=tk.RIGHT, padx=(10, 5))
-        self.browse_cover_button.configure_state("disabled")
-        
-        self.clear_cover_button = ModernButton(file_frame, "Limpiar",
-                                              self._clear_custom_cover,
-                                              bg_color=Colors.SECONDARY,
-                                              width=80, height=32)
-        self.clear_cover_button.pack(side=tk.RIGHT)
-        self.clear_cover_button.configure_state("disabled")
-
-        # Output Configuration Card
-        output_card_container, output_content = self._create_card_frame(frame, "Configuración de Salida")
-        output_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        tk.Label(output_content, text="Carpeta de salida", bg=Colors.BG_CARD,
-                fg=Colors.TEXT_DARK, font=('Segoe UI', 10, 'bold')).pack(anchor="w", pady=(0, 5))
-        
-        dir_frame = tk.Frame(output_content, bg=Colors.BG_CARD)
-        dir_frame.pack(fill=tk.X, pady=(0, 15))
-        
-        dir_entry = tk.Entry(dir_frame, textvariable=self.outdir_var,
-                            font=('Segoe UI', 10), relief="solid", borderwidth=1)
-        dir_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, padx=(0, 10))
-        
-        self.browse_button = ModernButton(dir_frame, "Explorar", 
-                                         self._choose_outdir, width=100, height=32)
-        self.browse_button.pack(side=tk.RIGHT)
-        
-        # Format and Quality
-        format_frame = tk.Frame(output_content, bg=Colors.BG_CARD)
-        format_frame.pack(fill=tk.X, pady=(0, 15))
-        
-        left_format = tk.Frame(format_frame, bg=Colors.BG_CARD)
-        left_format.pack(side=tk.LEFT, padx=(0, 30))
-        tk.Label(left_format, text="Formato:", bg=Colors.BG_CARD,
-                fg=Colors.TEXT_DARK, font=('Segoe UI', 10)).pack(side=tk.LEFT, padx=(0, 8))
-        format_combo = ttk.Combobox(left_format, textvariable=self.format_var,
-                                   values=Config.SUPPORTED_FORMATS, width=8, state="readonly")
-        format_combo.pack(side=tk.LEFT)
-        
-        right_format = tk.Frame(format_frame, bg=Colors.BG_CARD)
-        right_format.pack(side=tk.LEFT)
-        tk.Label(right_format, text="Calidad (kbps):", bg=Colors.BG_CARD,
-                fg=Colors.TEXT_DARK, font=('Segoe UI', 10)).pack(side=tk.LEFT, padx=(0, 8))
-        bitrate_combo = ttk.Combobox(right_format, textvariable=self.bitrate_var,
-                                    values=Config.BITRATE_OPTIONS, width=8, state="readonly")
-        bitrate_combo.pack(side=tk.LEFT)
-        
-        # Options
-        options_frame = tk.Frame(output_content, bg=Colors.BG_CARD)
-        options_frame.pack(fill=tk.X)
-        
-        ttk.Checkbutton(options_frame, text="Crear carpetas por artista",
-                       variable=self.artist_folder_var, style="TCheckbutton").pack(anchor="w", pady=2)
-        ttk.Checkbutton(options_frame, text="Omitir archivos existentes",
-                       variable=self.skip_existing_var, style="TCheckbutton").pack(anchor="w", pady=2)
-
-        # Progress Card
-        progress_card_container, progress_content = self._create_card_frame(frame, "Progreso")
-        progress_card_container.pack(fill=tk.BOTH, expand=True, padx=20)
-        
-        # Control buttons
-        control_frame = tk.Frame(progress_content, bg=Colors.BG_CARD)
-        control_frame.pack(fill=tk.X, pady=(0, 15))
-        
-        self.btn_download = ModernButton(control_frame, "Descargar", 
-                                        self._on_download, width=140, height=42)
-        self.btn_download.pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.btn_cancel = ModernButton(control_frame, "Cancelar", 
-                                      self._on_cancel, bg_color=Colors.ERROR,
-                                      width=140, height=42)
-        self.btn_cancel.pack(side=tk.LEFT, padx=(0, 10))
-        self.btn_cancel.configure_state("disabled")
-        
-        self.open_folder_button = ModernButton(control_frame, "Abrir Carpeta",
-                                              self._open_output_folder,
-                                              bg_color=Colors.SECONDARY,
-                                              width=140, height=42)
-        self.open_folder_button.pack(side=tk.RIGHT)
-        
-        # Info display
-        info_container = tk.Frame(progress_content, bg="#F8FAFC", relief="solid",
-                                 borderwidth=1, highlightbackground=Colors.BORDER,
-                                 highlightthickness=1)
-        info_container.pack(fill=tk.X, pady=(0, 15))
-        
-        self.info_text = tk.Text(info_container, height=3, wrap='word', state=tk.DISABLED,
-                                font=('Segoe UI', 9), relief=tk.FLAT, bg='#F8FAFC',
-                                fg=Colors.TEXT_DARK, padx=10, pady=8)
-        self.info_text.pack(fill=tk.BOTH)
-        
-        # Progress bar
-        progress_bar_frame = tk.Frame(progress_content, bg=Colors.BG_CARD)
-        progress_bar_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.progress = ttk.Progressbar(progress_bar_frame, orient=tk.HORIZONTAL,
-                                       mode='determinate', style="Custom.Horizontal.TProgressbar")
-        self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        
-        self.progress_label = tk.Label(progress_bar_frame, text="0%", width=6,
-                                      bg=Colors.BG_CARD, fg=Colors.TEXT_DARK,
-                                      font=('Segoe UI', 10, 'bold'))
-        self.progress_label.pack(side=tk.RIGHT)
-        
-        # Status label
-        self.lbl_status = tk.Label(progress_content, text="Listo para descargar",
-                                  font=('Segoe UI', 10), anchor="w",
-                                  bg=Colors.BG_CARD, fg=Colors.TEXT_LIGHT)
-        self.lbl_status.pack(fill=tk.X, pady=(0, 15))
-        
-        # Log area
-        log_container = tk.Frame(progress_content, bg=Colors.BG_CARD)
-        log_container.pack(fill=tk.BOTH, expand=True)
-        
-        tk.Label(log_container, text="Registro de actividad", bg=Colors.BG_CARD,
-                fg=Colors.TEXT_DARK, font=('Segoe UI', 10, 'bold')).pack(anchor="w", pady=(0, 5))
-        
-        log_text_container = tk.Frame(log_container, bg="white", relief="solid",
-                                     borderwidth=1, highlightbackground=Colors.BORDER,
-                                     highlightthickness=1)
-        log_text_container.pack(fill=tk.BOTH, expand=True)
-        
-        self.txt_log = tk.Text(log_text_container, wrap='word', state=tk.DISABLED,
-                              font=('Consolas', 9), bg='white', fg=Colors.TEXT_DARK,
-                              relief="flat", padx=10, pady=8)
-        scrollbar = ttk.Scrollbar(log_text_container, orient=tk.VERTICAL,
-                                 command=self.txt_log.yview)
-        self.txt_log.configure(yscrollcommand=scrollbar.set)
-        self.txt_log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def _build_settings_tab(self):
-        frame = self.settings_frame.scrollable_frame
-        
-        # Organization Card
-        org_card_container, org_content = self._create_card_frame(frame, "Organización de Archivos")
-        org_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        ttk.Checkbutton(org_content, text="Crear carpetas por artista automáticamente",
-                       variable=self.artist_folder_var, style="TCheckbutton").pack(anchor=tk.W, pady=5)
-        ttk.Checkbutton(org_content, text="Omitir archivos que ya existen (no sobreescribir)",
-                       variable=self.skip_existing_var, style="TCheckbutton").pack(anchor=tk.W, pady=5)
-
-        # Cover Art Card
-        cover_card_container, cover_content = self._create_card_frame(frame, "Configuración de Carátulas")
-        cover_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        ttk.Checkbutton(cover_content, text="Guardar carátula como archivo separado",
-                       variable=self.save_cover_var, style="TCheckbutton").pack(anchor=tk.W, pady=5)
-        
-        format_frame = tk.Frame(cover_content, bg=Colors.BG_CARD)
-        format_frame.pack(fill=tk.X, pady=(10, 0))
-        tk.Label(format_frame, text="Formato de carátula:", bg=Colors.BG_CARD,
-                fg=Colors.TEXT_DARK, font=('Segoe UI', 10)).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Combobox(format_frame, textvariable=self.cover_format_var,
-                    values=["jpg", "png"], width=8, state="readonly").pack(side=tk.LEFT)
-
-        # Actions Card
-        actions_card_container, actions_content = self._create_card_frame(frame, "Acciones")
-        actions_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        btn_frame = tk.Frame(actions_content, bg=Colors.BG_CARD)
-        btn_frame.pack(fill=tk.X)
-        
-        ModernButton(btn_frame, "Guardar Configuración", self._save_settings,
-                    width=180, height=40).pack(side=tk.LEFT, padx=(0, 10))
-        ModernButton(btn_frame, "Restaurar Valores", self._reset_settings,
-                    bg_color=Colors.SECONDARY, width=180, height=40).pack(side=tk.LEFT, padx=(0, 10))
-        ModernButton(btn_frame, "Abrir Carpeta Config", self._open_config_folder,
-                    bg_color=Colors.SECONDARY, width=180, height=40).pack(side=tk.LEFT)
-
-    def _build_info_tab(self):
-        frame = self.info_frame.scrollable_frame
-        
-        # Header
-        header_frame = tk.Frame(frame, bg=Colors.BG_LIGHT)
-        header_frame.pack(fill=tk.X, pady=(20, 30), padx=20)
-        
-        title = tk.Label(header_frame, text="Audio Downloader Pro",
-                        bg=Colors.BG_LIGHT, fg=Colors.PRIMARY,
-                        font=('Segoe UI', 22, 'bold'))
-        title.pack()
-        
-        version = tk.Label(header_frame, text="Versión 2.2 Pro - YouTube, SoundCloud y más",
-                          bg=Colors.BG_LIGHT, fg=Colors.TEXT_LIGHT,
-                          font=('Segoe UI', 11))
-        version.pack(pady=(5, 0))
-        
-        author = tk.Label(header_frame, text="Desarrollado por Alonso",
-                         bg=Colors.BG_LIGHT, fg=Colors.ACCENT,
-                         font=('Segoe UI', 10, 'italic'))
-        author.pack(pady=(5, 0))
-
-        # Features Card
-        features_card_container, features_content = self._create_card_frame(frame, "Características Principales")
-        features_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        features = [
-            ("🎵", "Descarga audio de YouTube, SoundCloud, Bandcamp y más"),
-            ("🎥", "Convierte videos de YouTube a audio de alta calidad"),
-            ("🎼", "Soporte para MP3, M4A, FLAC y WAV"),
-            ("🖼️", "Descarga e incrustación automática de carátulas"),
-            ("✨", "Opción para incrustar portada personalizada"),
-            ("📁", "Organización inteligente de archivos por artista"),
-            ("🎨", "Interfaz moderna e intuitiva con scrollbars"),
-            ("💾", "Configuración persistente"),
-            ("📊", "Progreso de descarga en tiempo real"),
-            ("🌐", "Soporta más de 1000 sitios web de video y audio")
-        ]
-        
-        for icon, text in features:
-            feature_frame = tk.Frame(features_content, bg=Colors.BG_CARD)
-            feature_frame.pack(fill=tk.X, pady=3)
-            tk.Label(feature_frame, text=icon, bg=Colors.BG_CARD,
-                    font=('Segoe UI', 12)).pack(side=tk.LEFT, padx=(0, 10))
-            tk.Label(feature_frame, text=text, bg=Colors.BG_CARD,
-                    fg=Colors.TEXT_DARK, font=('Segoe UI', 10),
-                    wraplength=600, justify=tk.LEFT).pack(side=tk.LEFT, anchor="w")
-
-        # Requirements Card
-        req_card_container, req_content = self._create_card_frame(frame, "Requisitos del Sistema")
-        req_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        requirements = [
-            "Python 3.7 o superior",
-            "yt-dlp (pip install yt-dlp)",
-            "FFmpeg (esencial para conversión de audio y metadatos)"
-        ]
-        
-        for req in requirements:
-            req_frame = tk.Frame(req_content, bg=Colors.BG_CARD)
-            req_frame.pack(fill=tk.X, pady=3)
-            tk.Label(req_frame, text="•", bg=Colors.BG_CARD,
-                    fg=Colors.ACCENT, font=('Segoe UI', 12, 'bold')).pack(side=tk.LEFT, padx=(0, 10))
-            tk.Label(req_frame, text=req, bg=Colors.BG_CARD,
-                    fg=Colors.TEXT_DARK, font=('Segoe UI', 10)).pack(side=tk.LEFT, anchor="w")
-
-    def _build_editor_tab(self):
-        """Build metadata editor tab"""
-        frame = self.editor_frame.scrollable_frame
-        
-        # Header info
-        info_header = tk.Frame(frame, bg=Colors.BG_LIGHT)
-        info_header.pack(fill=tk.X, pady=(20, 20), padx=20)
-        
-        tk.Label(info_header, text="Editor de Metadatos y Carátula",
-                bg=Colors.BG_LIGHT, fg=Colors.PRIMARY,
-                font=('Segoe UI', 16, 'bold')).pack()
-        
-        tk.Label(info_header, text="Edita información y portada de tus archivos de audio existentes",
-                bg=Colors.BG_LIGHT, fg=Colors.TEXT_LIGHT,
-                font=('Segoe UI', 10)).pack(pady=(5, 0))
-        
-        # File Selection Card
-        file_card_container, file_content = self._create_card_frame(frame, "Seleccionar Archivo de Audio")
-        file_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        file_select_frame = tk.Frame(file_content, bg=Colors.BG_CARD)
-        file_select_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.editor_file_label = tk.Label(file_select_frame, text="Ningún archivo seleccionado",
-                                         bg=Colors.BG_CARD, fg=Colors.TEXT_LIGHT,
-                                         font=('Segoe UI', 10), anchor="w")
-        self.editor_file_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        ModernButton(file_select_frame, "Seleccionar Archivo",
-                    self._select_audio_file, width=150, height=36).pack(side=tk.RIGHT)
-        
-        # Current Metadata Display
-        current_meta_frame = tk.Frame(file_content, bg="#F8FAFC", relief="solid",
-                                     borderwidth=1, highlightbackground=Colors.BORDER,
-                                     highlightthickness=1)
-        current_meta_frame.pack(fill=tk.X)
-        
-        tk.Label(current_meta_frame, text="Metadatos actuales:",
-                bg="#F8FAFC", fg=Colors.TEXT_DARK,
-                font=('Segoe UI', 9, 'bold')).pack(anchor="w", padx=10, pady=(8, 5))
-        
-        self.editor_current_meta = tk.Text(current_meta_frame, height=4, wrap='word',
-                                          state=tk.DISABLED, font=('Segoe UI', 9),
-                                          relief=tk.FLAT, bg='#F8FAFC',
-                                          fg=Colors.TEXT_DARK, padx=10, pady=5)
-        self.editor_current_meta.pack(fill=tk.X, padx=10, pady=(0, 8))
-        
-        # Edit Metadata Card
-        meta_card_container, meta_content = self._create_card_frame(frame, "Editar Metadatos")
-        meta_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        # Metadata fields
-        fields = [
-            ("Título:", self.editor_title_var),
-            ("Artista:", self.editor_artist_var),
-            ("Álbum:", self.editor_album_var),
-            ("Año:", self.editor_year_var),
-            ("Género:", self.editor_genre_var)
-        ]
-        
-        for label_text, var in fields:
-            field_frame = tk.Frame(meta_content, bg=Colors.BG_CARD)
-            field_frame.pack(fill=tk.X, pady=5)
-            
-            tk.Label(field_frame, text=label_text, bg=Colors.BG_CARD,
-                    fg=Colors.TEXT_DARK, font=('Segoe UI', 10),
-                    width=12, anchor="w").pack(side=tk.LEFT, padx=(0, 10))
-            
-            tk.Entry(field_frame, textvariable=var, font=('Segoe UI', 10),
-                    relief="solid", borderwidth=1).pack(side=tk.LEFT, fill=tk.X,
-                                                        expand=True, ipady=4)
-        
-        # Cover Art Card
-        cover_edit_container, cover_edit_content = self._create_card_frame(frame, "Cambiar Carátula")
-        cover_edit_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        # Current cover preview
-        preview_frame = tk.Frame(cover_edit_content, bg=Colors.BG_CARD)
-        preview_frame.pack(fill=tk.X, pady=(0, 15))
-        
-        tk.Label(preview_frame, text="Vista previa actual:",
-                bg=Colors.BG_CARD, fg=Colors.TEXT_DARK,
-                font=('Segoe UI', 10, 'bold')).pack(anchor="w", pady=(0, 8))
-        
-        self.editor_cover_preview_frame = tk.Frame(preview_frame, bg="#F0F0F0",
-                                                   width=200, height=200,
-                                                   relief="solid", borderwidth=1)
-        self.editor_cover_preview_frame.pack(anchor="w")
-        self.editor_cover_preview_frame.pack_propagate(False)
-        
-        self.editor_cover_preview_label = tk.Label(self.editor_cover_preview_frame,
-                                                   text="Sin carátula",
-                                                   bg="#F0F0F0", fg=Colors.TEXT_LIGHT,
-                                                   font=('Segoe UI', 10))
-        self.editor_cover_preview_label.pack(expand=True)
-        
-        # New cover selection
-        new_cover_frame = tk.Frame(cover_edit_content, bg=Colors.BG_CARD)
-        new_cover_frame.pack(fill=tk.X, pady=(15, 0))
-        
-        tk.Label(new_cover_frame, text="Nueva carátula:",
-                bg=Colors.BG_CARD, fg=Colors.TEXT_DARK,
-                font=('Segoe UI', 10, 'bold')).pack(anchor="w", pady=(0, 8))
-        
-        cover_select_frame = tk.Frame(new_cover_frame, bg=Colors.BG_CARD)
-        cover_select_frame.pack(fill=tk.X)
-        
-        self.editor_new_cover_label = tk.Label(cover_select_frame,
-                                               text="Ninguna imagen seleccionada",
-                                               bg=Colors.BG_CARD, fg=Colors.TEXT_LIGHT,
-                                               font=('Segoe UI', 10), anchor="w")
-        self.editor_new_cover_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        ModernButton(cover_select_frame, "Seleccionar",
-                    self._select_editor_cover, width=120, height=32).pack(side=tk.RIGHT, padx=(10, 5))
-        
-        ModernButton(cover_select_frame, "Limpiar",
-                    self._clear_editor_cover, bg_color=Colors.SECONDARY,
-                    width=100, height=32).pack(side=tk.RIGHT)
-        
-        # Actions Card
-        actions_card_container, actions_content = self._create_card_frame(frame, "Acciones")
-        actions_card_container.pack(fill=tk.X, pady=(0, 15), padx=20)
-        
-        actions_frame = tk.Frame(actions_content, bg=Colors.BG_CARD)
-        actions_frame.pack(fill=tk.X)
-        
-        self.btn_apply_metadata = ModernButton(actions_frame, "Aplicar Cambios",
-                                              self._apply_metadata_changes,
-                                              width=160, height=42)
-        self.btn_apply_metadata.pack(side=tk.LEFT, padx=(0, 10))
-        self.btn_apply_metadata.configure_state("disabled")
-        
-        ModernButton(actions_frame, "Limpiar Todo",
-                    self._clear_editor_form, bg_color=Colors.SECONDARY,
-                    width=160, height=42).pack(side=tk.LEFT)
-        
-        # Status
-        self.editor_status_label = tk.Label(actions_content, text="Selecciona un archivo para comenzar",
-                                           font=('Segoe UI', 10), anchor="w",
-                                           bg=Colors.BG_CARD, fg=Colors.TEXT_LIGHT)
-        self.editor_status_label.pack(fill=tk.X, pady=(15, 0))
-
-    def _select_audio_file(self):
-        """Select audio file to edit"""
-        filepath = filedialog.askopenfilename(
-            title="Seleccionar archivo de audio",
-            filetypes=[
-                ("Archivos de Audio", "*.mp3 *.m4a *.flac *.wav *.ogg *.opus"),
-                ("MP3", "*.mp3"),
-                ("M4A/AAC", "*.m4a"),
-                ("FLAC", "*.flac"),
-                ("WAV", "*.wav"),
-                ("Todos los archivos", "*.*")
-            ],
-            initialdir=self.outdir_var.get()
-        )
-        
-        if filepath:
-            self.editor_file_path = filepath
-            filename = Path(filepath).name
-            self.editor_file_label.config(text=filename, foreground=Colors.TEXT_DARK)
-            self.btn_apply_metadata.configure_state("normal")
-            self._load_audio_metadata(filepath)
-            self.editor_status_label.config(text=f"Archivo cargado: {filename}",
-                                           fg=Colors.SUCCESS)
-
-    def _load_audio_metadata(self, filepath):
-        """Load and display current metadata"""
-        try:
-            from mutagen import File
-            
-            audio = File(filepath)
-            
-            if audio is None:
-                self.editor_status_label.config(text="Error: No se pudo leer el archivo",
-                                               fg=Colors.ERROR)
-                return
-            
-            # Display current metadata
-            current_meta = ""
-            
-            if hasattr(audio, 'tags') and audio.tags:
-                title = audio.tags.get('TIT2', audio.tags.get('title', ['N/A']))[0] if hasattr(audio.tags.get('TIT2', audio.tags.get('title', None)), '__getitem__') else str(audio.tags.get('TIT2', audio.tags.get('title', 'N/A')))
-                artist = audio.tags.get('TPE1', audio.tags.get('artist', ['N/A']))[0] if hasattr(audio.tags.get('TPE1', audio.tags.get('artist', None)), '__getitem__') else str(audio.tags.get('TPE1', audio.tags.get('artist', 'N/A')))
-                album = audio.tags.get('TALB', audio.tags.get('album', ['N/A']))[0] if hasattr(audio.tags.get('TALB', audio.tags.get('album', None)), '__getitem__') else str(audio.tags.get('TALB', audio.tags.get('album', 'N/A')))
-                year = audio.tags.get('TDRC', audio.tags.get('date', ['N/A']))[0] if hasattr(audio.tags.get('TDRC', audio.tags.get('date', None)), '__getitem__') else str(audio.tags.get('TDRC', audio.tags.get('date', 'N/A')))
-                genre = audio.tags.get('TCON', audio.tags.get('genre', ['N/A']))[0] if hasattr(audio.tags.get('TCON', audio.tags.get('genre', None)), '__getitem__') else str(audio.tags.get('TCON', audio.tags.get('genre', 'N/A')))
-                
-                current_meta = f"Título: {title}\nArtista: {artist}\nÁlbum: {album}\nAño: {year}\nGénero: {genre}"
-                
-                # Load into edit fields
-                self.editor_title_var.set(str(title))
-                self.editor_artist_var.set(str(artist))
-                self.editor_album_var.set(str(album))
-                self.editor_year_var.set(str(year))
-                self.editor_genre_var.set(str(genre))
-            else:
-                current_meta = "Sin metadatos"
-            
-            self.editor_current_meta.config(state=tk.NORMAL)
-            self.editor_current_meta.delete("1.0", tk.END)
-            self.editor_current_meta.insert("1.0", current_meta)
-            self.editor_current_meta.config(state=tk.DISABLED)
-            
-            # Try to extract cover art
-            self._extract_current_cover(audio, filepath)
-            
-        except ImportError:
-            messagebox.showwarning("Dependencia Faltante",
-                                 "Se requiere 'mutagen' para editar metadatos.\n\nInstala con: pip install mutagen")
-            self.editor_status_label.config(text="Error: mutagen no está instalado",
-                                           fg=Colors.ERROR)
-        except Exception as e:
-            self.logger.error(f"Error loading metadata: {e}")
-            self.editor_status_label.config(text=f"Error al cargar metadatos: {str(e)}",
-                                           fg=Colors.ERROR)
-
-    def _extract_current_cover(self, audio, filepath):
-        """Extract and display current cover art"""
-        try:
-            from mutagen.id3 import ID3, APIC
-            from mutagen.mp4 import MP4
-            from mutagen.flac import FLAC, Picture
-            from PIL import Image
-            import io
-            
-            cover_data = None
-            file_ext = Path(filepath).suffix.lower()
-            
-            if file_ext == '.mp3':
-                try:
-                    tags = ID3(filepath)
-                    for tag in tags.getall('APIC'):
-                        cover_data = tag.data
-                        break
-                except:
-                    pass
-            elif file_ext == '.m4a':
-                try:
-                    tags = MP4(filepath)
-                    if 'covr' in tags:
-                        cover_data = bytes(tags['covr'][0])
-                except:
-                    pass
-            elif file_ext == '.flac':
-                try:
-                    flac = FLAC(filepath)
-                    if flac.pictures:
-                        cover_data = flac.pictures[0].data
-                except:
-                    pass
-            
-            if cover_data:
-                # Display cover preview
-                image = Image.open(io.BytesIO(cover_data))
-                image.thumbnail((200, 200), Image.Resampling.LANCZOS)
-                
-                # Convert to PhotoImage
-                from PIL import ImageTk
-                photo = ImageTk.PhotoImage(image)
-                
-                self.editor_cover_preview_label.config(image=photo, text="")
-                self.editor_cover_preview_label.image = photo  # Keep reference
-            else:
-                self.editor_cover_preview_label.config(image="", text="Sin carátula")
-                
-        except ImportError:
-            messagebox.showinfo("Información",
-                               "Se requiere 'Pillow' para ver carátulas.\n\nInstala con: pip install Pillow")
-        except Exception as e:
-            self.logger.error(f"Error extracting cover: {e}")
-            self.editor_cover_preview_label.config(image="", text="Error al cargar")
-
-    def _select_editor_cover(self):
-        """Select new cover for editor"""
-        filepath = filedialog.askopenfilename(
-            title="Seleccionar nueva carátula",
-            filetypes=Config.SUPPORTED_IMAGE_FORMATS,
-            initialdir=str(Path.home())
-        )
-        if filepath:
-            self.editor_cover_path = filepath
-            filename = Path(filepath).name
-            self.editor_new_cover_label.config(text=filename, foreground=Colors.TEXT_DARK)
-
-    def _clear_editor_cover(self):
-        """Clear new cover selection"""
-        self.editor_cover_path = None
-        self.editor_new_cover_label.config(text="Ninguna imagen seleccionada",
-                                          foreground=Colors.TEXT_LIGHT)
-
-    def _clear_editor_form(self):
-        """Clear all editor fields"""
-        self.editor_file_path = None
-        self.editor_cover_path = None
-        self.editor_file_label.config(text="Ningún archivo seleccionado",
-                                     foreground=Colors.TEXT_LIGHT)
-        self.editor_new_cover_label.config(text="Ninguna imagen seleccionada",
-                                          foreground=Colors.TEXT_LIGHT)
-        self.editor_cover_preview_label.config(image="", text="Sin carátula")
-        
-        self.editor_title_var.set("")
-        self.editor_artist_var.set("")
-        self.editor_album_var.set("")
-        self.editor_year_var.set("")
-        self.editor_genre_var.set("")
-        
-        self.editor_current_meta.config(state=tk.NORMAL)
-        self.editor_current_meta.delete("1.0", tk.END)
-        self.editor_current_meta.config(state=tk.DISABLED)
-        
-        self.btn_apply_metadata.configure_state("disabled")
-        self.editor_status_label.config(text="Selecciona un archivo para comenzar",
-                                       fg=Colors.TEXT_LIGHT)
-
-    def _apply_metadata_changes(self):
-        """Apply metadata and cover changes to audio file"""
-        if not self.editor_file_path or not os.path.exists(self.editor_file_path):
-            messagebox.showwarning("Error", "No hay archivo seleccionado")
+        self.notebook = ttk.Notebook(self.root, style="Dark.TNotebook")
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=25, pady=(5, 20))
+        
+        # Tabs
+        queue_tab = tk.Frame(self.notebook, bg=Theme.BG_MAIN)
+        self.notebook.add(queue_tab, text="  Cola de Descargas  ")
+        self._build_queue_tab(queue_tab)
+        
+        editor_tab = tk.Frame(self.notebook, bg=Theme.BG_MAIN)
+        self.notebook.add(editor_tab, text="  Editor Metadatos  ")
+        self._build_editor_tab(editor_tab)
+    
+    def _build_queue_tab(self, parent):
+        # Input card
+        card1 = tk.Frame(parent, bg=Theme.BG_CARD)
+        card1.pack(fill=tk.X, pady=(12, 10), padx=5)
+        inner1 = tk.Frame(card1, bg=Theme.BG_CARD)
+        inner1.pack(fill=tk.X, padx=18, pady=16)
+        
+        tk.Label(inner1, text="Pegar URLs o nombres (uno por línea)", font=('SF Pro Display', 11, 'bold'),
+                bg=Theme.BG_CARD, fg=Theme.TEXT_PRIMARY).pack(anchor="w", pady=(0, 8))
+        
+        text_frame = tk.Frame(inner1, bg=Theme.BG_INPUT, highlightbackground=Theme.BORDER, highlightthickness=1)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.input_text = tk.Text(text_frame, height=5, font=('SF Pro Display', 11), bg=Theme.BG_INPUT,
+                                 fg=Theme.TEXT_PRIMARY, insertbackground=Theme.TEXT_PRIMARY, relief=tk.FLAT, wrap=tk.WORD)
+        self.input_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Provider selector
+        opts_row = tk.Frame(inner1, bg=Theme.BG_CARD)
+        opts_row.pack(fill=tk.X, pady=(10, 0))
+        
+        tk.Label(opts_row, text="Buscar en:", font=('SF Pro Display', 10), bg=Theme.BG_CARD, fg=Theme.TEXT_SECONDARY).pack(side=tk.LEFT)
+        ttk.Combobox(opts_row, textvariable=self.provider_var, values=list(Config.PROVIDERS.keys()), width=14, state="readonly").pack(side=tk.LEFT, padx=(6, 20))
+        
+        tk.Label(opts_row, text="Formato:", font=('SF Pro Display', 10), bg=Theme.BG_CARD, fg=Theme.TEXT_SECONDARY).pack(side=tk.LEFT)
+        ttk.Combobox(opts_row, textvariable=self.format_var, values=Config.SUPPORTED_FORMATS, width=6, state="readonly").pack(side=tk.LEFT, padx=(6, 20))
+        
+        tk.Label(opts_row, text="Calidad:", font=('SF Pro Display', 10), bg=Theme.BG_CARD, fg=Theme.TEXT_SECONDARY).pack(side=tk.LEFT)
+        ttk.Combobox(opts_row, textvariable=self.bitrate_var, values=Config.BITRATE_OPTIONS, width=6, state="readonly").pack(side=tk.LEFT, padx=(6, 0))
+        
+        # Folder
+        folder_row = tk.Frame(inner1, bg=Theme.BG_CARD)
+        folder_row.pack(fill=tk.X, pady=(10, 0))
+        
+        tk.Label(folder_row, text="Guardar en:", font=('SF Pro Display', 10), bg=Theme.BG_CARD, fg=Theme.TEXT_SECONDARY).pack(side=tk.LEFT)
+        
+        folder_entry = tk.Entry(folder_row, textvariable=self.outdir_var, font=('SF Pro Display', 10),
+                               bg=Theme.BG_INPUT, fg=Theme.TEXT_PRIMARY, relief=tk.FLAT)
+        folder_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8), ipady=4)
+        
+        tk.Button(folder_row, text="📁", font=('SF Pro Display', 11), bg=Theme.BG_INPUT, fg=Theme.TEXT_PRIMARY,
+                 relief=tk.FLAT, cursor="hand2", command=self._choose_folder).pack(side=tk.RIGHT)
+        
+        # Queue display card
+        card2 = tk.Frame(parent, bg=Theme.BG_CARD)
+        card2.pack(fill=tk.BOTH, expand=True, pady=(0, 10), padx=5)
+        inner2 = tk.Frame(card2, bg=Theme.BG_CARD)
+        inner2.pack(fill=tk.BOTH, expand=True, padx=18, pady=16)
+        
+        header_row = tk.Frame(inner2, bg=Theme.BG_CARD)
+        header_row.pack(fill=tk.X, pady=(0, 8))
+        
+        tk.Label(header_row, text="Cola de Descargas", font=('SF Pro Display', 11, 'bold'),
+                bg=Theme.BG_CARD, fg=Theme.TEXT_PRIMARY).pack(side=tk.LEFT)
+        
+        self.queue_count = tk.Label(header_row, text="0 items", font=('SF Pro Display', 10),
+                                   bg=Theme.BG_CARD, fg=Theme.TEXT_SECONDARY)
+        self.queue_count.pack(side=tk.RIGHT)
+        
+        # Queue listbox
+        list_frame = tk.Frame(inner2, bg=Theme.BG_INPUT)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.queue_listbox = tk.Listbox(list_frame, font=('SF Pro Display', 11), bg=Theme.BG_INPUT,
+                                        fg=Theme.TEXT_PRIMARY, selectbackground=Theme.ACCENT,
+                                        selectforeground=Theme.BG_MAIN, relief=tk.FLAT, highlightthickness=0)
+        self.queue_listbox.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        self.queue_listbox.bind('<<ListboxSelect>>', self._on_queue_select)
+        
+        # Preview / status
+        preview_row = tk.Frame(inner2, bg=Theme.BG_CARD)
+        preview_row.pack(fill=tk.X, pady=(10, 0))
+        
+        self.preview_btn = ModernButton(preview_row, "▶ Preview", self._play_preview, bg_color=Theme.ACCENT_ALT, width=100, height=36)
+        self.preview_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.preview_btn.set_enabled(False)
+        
+        self.stop_preview_btn = ModernButton(preview_row, "⏹ Stop", self._stop_preview, bg_color=Theme.BG_HOVER, fg_color=Theme.TEXT_PRIMARY, width=80, height=36)
+        self.stop_preview_btn.pack(side=tk.LEFT)
+        
+        self.status_label = tk.Label(preview_row, text="", font=('SF Pro Display', 10),
+                                     bg=Theme.BG_CARD, fg=Theme.TEXT_SECONDARY)
+        self.status_label.pack(side=tk.RIGHT)
+        
+        # Buttons
+        btn_frame = tk.Frame(parent, bg=Theme.BG_MAIN)
+        btn_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        
+        self.start_btn = ModernButton(btn_frame, "Descargar Todo", self._start_queue, width=150, height=44)
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 8))
+        
+        self.cancel_btn = ModernButton(btn_frame, "Cancelar", self._cancel_queue, bg_color=Theme.ERROR, fg_color=Theme.TEXT_PRIMARY, width=100, height=44)
+        self.cancel_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.cancel_btn.set_enabled(False)
+        
+        ModernButton(btn_frame, "Limpiar", self._clear_queue, bg_color=Theme.BG_HOVER, fg_color=Theme.TEXT_PRIMARY, width=90, height=44).pack(side=tk.LEFT)
+        
+        ModernButton(btn_frame, "Abrir Carpeta", self._open_folder, bg_color=Theme.BG_HOVER, fg_color=Theme.TEXT_PRIMARY, width=120, height=44).pack(side=tk.RIGHT)
+    
+    def _build_editor_tab(self, parent):
+        card = tk.Frame(parent, bg=Theme.BG_CARD)
+        card.pack(fill=tk.X, pady=(12, 10), padx=5)
+        inner = tk.Frame(card, bg=Theme.BG_CARD)
+        inner.pack(fill=tk.X, padx=18, pady=16)
+        
+        tk.Label(inner, text="Archivo de Audio", font=('SF Pro Display', 11, 'bold'),
+                bg=Theme.BG_CARD, fg=Theme.TEXT_PRIMARY).pack(anchor="w", pady=(0, 8))
+        
+        file_row = tk.Frame(inner, bg=Theme.BG_CARD)
+        file_row.pack(fill=tk.X)
+        
+        self.file_label = tk.Label(file_row, text="Ningún archivo seleccionado", font=('SF Pro Display', 10),
+                                   bg=Theme.BG_CARD, fg=Theme.TEXT_MUTED)
+        self.file_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        ModernButton(file_row, "Seleccionar", self._select_file, width=110, height=36).pack(side=tk.RIGHT)
+        
+        # Fields
+        card2 = tk.Frame(parent, bg=Theme.BG_CARD)
+        card2.pack(fill=tk.X, pady=(0, 10), padx=5)
+        inner2 = tk.Frame(card2, bg=Theme.BG_CARD)
+        inner2.pack(fill=tk.X, padx=18, pady=16)
+        
+        for label, var in [("Título", self.editor_title), ("Artista", self.editor_artist), ("Álbum", self.editor_album)]:
+            row = tk.Frame(inner2, bg=Theme.BG_CARD)
+            row.pack(fill=tk.X, pady=4)
+            tk.Label(row, text=label, font=('SF Pro Display', 10), bg=Theme.BG_CARD, fg=Theme.TEXT_SECONDARY, width=8, anchor="w").pack(side=tk.LEFT)
+            tk.Entry(row, textvariable=var, font=('SF Pro Display', 10), bg=Theme.BG_INPUT, fg=Theme.TEXT_PRIMARY, relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5, padx=(8, 0))
+        
+        # Cover art card
+        card3 = tk.Frame(parent, bg=Theme.BG_CARD)
+        card3.pack(fill=tk.X, pady=(0, 10), padx=5)
+        inner3 = tk.Frame(card3, bg=Theme.BG_CARD)
+        inner3.pack(fill=tk.X, padx=18, pady=16)
+        
+        tk.Label(inner3, text="Carátula (opcional)", font=('SF Pro Display', 11, 'bold'),
+                bg=Theme.BG_CARD, fg=Theme.TEXT_PRIMARY).pack(anchor="w", pady=(0, 8))
+        
+        cover_row = tk.Frame(inner3, bg=Theme.BG_CARD)
+        cover_row.pack(fill=tk.X)
+        
+        self.cover_label = tk.Label(cover_row, text="Ninguna imagen seleccionada", font=('SF Pro Display', 10),
+                                    bg=Theme.BG_CARD, fg=Theme.TEXT_MUTED)
+        self.cover_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        ModernButton(cover_row, "Seleccionar", self._select_cover, bg_color=Theme.ACCENT_ALT, width=110, height=36).pack(side=tk.RIGHT)
+        
+        btn_row = tk.Frame(parent, bg=Theme.BG_MAIN)
+        btn_row.pack(fill=tk.X, padx=5, pady=(0, 5))
+        
+        self.apply_btn = ModernButton(btn_row, "Aplicar Cambios", self._apply_meta, width=150, height=44)
+        self.apply_btn.pack(side=tk.LEFT)
+        self.apply_btn.set_enabled(False)
+    
+    # ===== Actions =====
+    def _choose_folder(self):
+        d = filedialog.askdirectory(initialdir=self.outdir_var.get())
+        if d: self.outdir_var.set(d)
+    
+    def _open_folder(self):
+        d = self.outdir_var.get()
+        if os.path.exists(d):
+            if sys.platform == 'darwin': os.system(f'open "{d}"')
+            elif sys.platform == 'win32': os.startfile(d)
+            else: os.system(f'xdg-open "{d}"')
+    
+    def _toggle_theme(self):
+        if Theme.name == "dark":
+            set_theme(ThemeLight)
+            self.theme_var.set("light")
+        else:
+            set_theme(ThemeDark)
+            self.theme_var.set("dark")
+        
+        self.config['theme'] = self.theme_var.get()
+        self.config_mgr.save(self.config)
+        
+        # Rebuild UI
+        self.root.destroy()
+        new_root = tk.Tk()
+        AudioDownloaderApp(new_root)
+        new_root.mainloop()
+    
+    def _start_queue(self):
+        text = self.input_text.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showwarning("Vacío", "Ingresa URLs o nombres de canciones")
             return
         
+        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        self.queue_mgr.clear()
+        self.queue_mgr.add_items(lines)
+        
+        # Update config
+        self.config.update({'output_dir': self.outdir_var.get(), 'format': self.format_var.get(),
+                           'bitrate': self.bitrate_var.get(), 'provider': self.provider_var.get()})
+        self.config_mgr.save(self.config)
+        self.queue_mgr.config = self.config
+        self.queue_mgr.provider = self.provider_var.get()
+        
+        self._refresh_queue_list()
+        self.start_btn.set_enabled(False)
+        self.cancel_btn.set_enabled(True)
+        self.queue_mgr.start()
+    
+    def _cancel_queue(self):
+        self.queue_mgr.cancel_all()
+        self._refresh_queue_list()
+        self.start_btn.set_enabled(True)
+        self.cancel_btn.set_enabled(False)
+        self.status_label.config(text="Cancelado")
+    
+    def _clear_queue(self):
+        self.queue_mgr.clear()
+        self.input_text.delete("1.0", tk.END)
+        self.queue_listbox.delete(0, tk.END)
+        self.queue_count.config(text="0 items")
+        self.status_label.config(text="")
+    
+    def _refresh_queue_list(self):
+        self.queue_listbox.delete(0, tk.END)
+        for item in self.queue_mgr.queue:
+            icon = {"pending": "⏸", "downloading": "⏳", "complete": "✅", "error": "❌", "canceled": "⚠️"}.get(item.status, "?")
+            progress = f" [{item.progress}%]" if item.status == QueueStatus.DOWNLOADING else ""
+            self.queue_listbox.insert(tk.END, f"{icon} {item.title}{progress}")
+        self.queue_count.config(text=f"{len(self.queue_mgr.queue)} items")
+    
+    def _on_queue_select(self, e):
+        sel = self.queue_listbox.curselection()
+        if sel and sel[0] < len(self.queue_mgr.queue):
+            self.selected_item = self.queue_mgr.queue[sel[0]]
+            self.preview_btn.set_enabled(self.selected_item.preview_url is not None)
+        else:
+            self.selected_item = None
+            self.preview_btn.set_enabled(False)
+    
+    def _play_preview(self):
+        if self.selected_item and self.selected_item.preview_url:
+            self.status_label.config(text="Cargando preview...")
+            def cb(ok, err=None):
+                self.root.after(0, lambda: self.status_label.config(text="▶ Reproduciendo..." if ok else f"Error: {err}"))
+            self.player.play_preview(self.selected_item.preview_url, cb)
+    
+    def _stop_preview(self):
+        self.player.stop()
+        self.status_label.config(text="Preview detenido")
+    
+    # ===== Editor =====
+    def _select_file(self):
+        f = filedialog.askopenfilename(filetypes=[("Audio", "*.mp3 *.m4a *.flac")])
+        if f:
+            self.editor_file = f
+            self.file_label.config(text=Path(f).name, fg=Theme.TEXT_PRIMARY)
+            self.apply_btn.set_enabled(True)
+            self._load_meta(f)
+    
+    def _load_meta(self, fp):
         try:
             from mutagen import File
-            from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, APIC
+            audio = File(fp)
+            if audio and audio.tags:
+                t = audio.tags
+                self.editor_title.set(str(t.get('TIT2', t.get('title', ['']))[0]) if t.get('TIT2') or t.get('title') else '')
+                self.editor_artist.set(str(t.get('TPE1', t.get('artist', ['']))[0]) if t.get('TPE1') or t.get('artist') else '')
+                self.editor_album.set(str(t.get('TALB', t.get('album', ['']))[0]) if t.get('TALB') or t.get('album') else '')
+        except: pass
+    
+    def _select_cover(self):
+        f = filedialog.askopenfilename(filetypes=[("Imágenes", "*.jpg *.jpeg *.png"), ("Todos", "*.*")])
+        if f:
+            self.editor_cover = f
+            self.cover_label.config(text=Path(f).name, fg=Theme.TEXT_PRIMARY)
+    
+    def _apply_meta(self):
+        if not self.editor_file: return
+        try:
+            from mutagen.id3 import ID3, TIT2, TPE1, TPE2, TALB, APIC
             from mutagen.mp4 import MP4, MP4Cover
             from mutagen.flac import FLAC, Picture
             
-            filepath = self.editor_file_path
-            file_ext = Path(filepath).suffix.lower()
-            
-            # Update metadata
-            if file_ext == '.mp3':
-                try:
-                    audio = ID3(filepath)
-                except:
-                    audio = ID3()
-                
-                if self.editor_title_var.get():
-                    audio['TIT2'] = TIT2(encoding=3, text=self.editor_title_var.get())
-                if self.editor_artist_var.get():
-                    audio['TPE1'] = TPE1(encoding=3, text=self.editor_artist_var.get())
-                if self.editor_album_var.get():
-                    audio['TALB'] = TALB(encoding=3, text=self.editor_album_var.get())
-                if self.editor_year_var.get():
-                    audio['TDRC'] = TDRC(encoding=3, text=self.editor_year_var.get())
-                if self.editor_genre_var.get():
-                    audio['TCON'] = TCON(encoding=3, text=self.editor_genre_var.get())
-                
-                # Add cover
-                if self.editor_cover_path and os.path.exists(self.editor_cover_path):
-                    with open(self.editor_cover_path, 'rb') as f:
-                        cover_data = f.data()
-                    
-                    # Determine MIME type
-                    mime = 'image/jpeg'
-                    if self.editor_cover_path.lower().endswith('.png'):
-                        mime = 'image/png'
-                    
-                    audio['APIC'] = APIC(
-                        encoding=3,
-                        mime=mime,
-                        type=3,
-                        desc='Cover',
-                        data=cover_data
-                    )
-                
-                audio.save(filepath, v2_version=3)
-                
-            elif file_ext == '.m4a':
-                audio = MP4(filepath)
-                
-                if self.editor_title_var.get():
-                    audio['\xa9nam'] = self.editor_title_var.get()
-                if self.editor_artist_var.get():
-                    audio['\xa9ART'] = self.editor_artist_var.get()
-                if self.editor_album_var.get():
-                    audio['\xa9alb'] = self.editor_album_var.get()
-                if self.editor_year_var.get():
-                    audio['\xa9day'] = self.editor_year_var.get()
-                if self.editor_genre_var.get():
-                    audio['\xa9gen'] = self.editor_genre_var.get()
-                
-                # Add cover
-                if self.editor_cover_path and os.path.exists(self.editor_cover_path):
-                    with open(self.editor_cover_path, 'rb') as f:
-                        cover_data = f.read()
-                    
-                    imageformat = MP4Cover.FORMAT_JPEG
-                    if self.editor_cover_path.lower().endswith('.png'):
-                        imageformat = MP4Cover.FORMAT_PNG
-                    
-                    audio['covr'] = [MP4Cover(cover_data, imageformat=imageformat)]
-                
+            ext = Path(self.editor_file).suffix.lower()
+            if ext == '.mp3':
+                try: audio = ID3(self.editor_file)
+                except: audio = ID3()
+                if self.editor_title.get(): audio.delall('TIT2'); audio['TIT2'] = TIT2(encoding=3, text=self.editor_title.get())
+                if self.editor_artist.get(): audio.delall('TPE1'); audio.delall('TPE2'); audio['TPE1'] = TPE1(encoding=3, text=self.editor_artist.get()); audio['TPE2'] = TPE2(encoding=3, text=self.editor_artist.get())
+                if self.editor_album.get(): audio.delall('TALB'); audio['TALB'] = TALB(encoding=3, text=self.editor_album.get())
+                if self.editor_cover:
+                    with open(self.editor_cover, 'rb') as f:
+                        data = f.read()
+                    mime = 'image/png' if self.editor_cover.lower().endswith('.png') else 'image/jpeg'
+                    audio.delall('APIC')
+                    audio['APIC'] = APIC(encoding=3, mime=mime, type=3, desc='Cover', data=data)
+                audio.save(self.editor_file, v2_version=3)
+            elif ext == '.m4a':
+                audio = MP4(self.editor_file)
+                if self.editor_title.get(): audio['\xa9nam'] = [self.editor_title.get()]
+                if self.editor_artist.get(): audio['\xa9ART'] = [self.editor_artist.get()]; audio['aART'] = [self.editor_artist.get()]
+                if self.editor_album.get(): audio['\xa9alb'] = [self.editor_album.get()]
+                if self.editor_cover:
+                    with open(self.editor_cover, 'rb') as f:
+                        data = f.read()
+                    fmt = MP4Cover.FORMAT_PNG if self.editor_cover.lower().endswith('.png') else MP4Cover.FORMAT_JPEG
+                    audio['covr'] = [MP4Cover(data, imageformat=fmt)]
                 audio.save()
-                
-            elif file_ext == '.flac':
-                audio = FLAC(filepath)
-                
-                if self.editor_title_var.get():
-                    audio['title'] = self.editor_title_var.get()
-                if self.editor_artist_var.get():
-                    audio['artist'] = self.editor_artist_var.get()
-                if self.editor_album_var.get():
-                    audio['album'] = self.editor_album_var.get()
-                if self.editor_year_var.get():
-                    audio['date'] = self.editor_year_var.get()
-                if self.editor_genre_var.get():
-                    audio['genre'] = self.editor_genre_var.get()
-                
-                # Add cover
-                if self.editor_cover_path and os.path.exists(self.editor_cover_path):
-                    image = Picture()
-                    image.type = 3  # Cover (front)
-                    
-                    mime = 'image/jpeg'
-                    if self.editor_cover_path.lower().endswith('.png'):
-                        mime = 'image/png'
-                    image.mime = mime
-                    
-                    with open(self.editor_cover_path, 'rb') as f:
-                        image.data = f.read()
-                    
+            elif ext == '.flac':
+                audio = FLAC(self.editor_file)
+                if self.editor_title.get(): audio['title'] = [self.editor_title.get()]
+                if self.editor_artist.get(): audio['artist'] = [self.editor_artist.get()]; audio['albumartist'] = [self.editor_artist.get()]
+                if self.editor_album.get(): audio['album'] = [self.editor_album.get()]
+                if self.editor_cover:
+                    pic = Picture()
+                    pic.type = 3
+                    pic.mime = 'image/png' if self.editor_cover.lower().endswith('.png') else 'image/jpeg'
+                    with open(self.editor_cover, 'rb') as f:
+                        pic.data = f.read()
                     audio.clear_pictures()
-                    audio.add_picture(image)
-                
+                    audio.add_picture(pic)
                 audio.save()
-            
-            else:
-                messagebox.showwarning("Formato no soportado",
-                                     f"El formato {file_ext} no está completamente soportado para edición")
-                return
-            
-            messagebox.showinfo("Éxito", "Metadatos actualizados correctamente")
-            self.editor_status_label.config(text="✅ Cambios aplicados exitosamente",
-                                           fg=Colors.SUCCESS)
-            
-            # Reload metadata to show changes
-            self._load_audio_metadata(filepath)
-            
+            messagebox.showinfo("Éxito", "Metadatos guardados (compatible Apple Music)")
+            self.editor_cover = None
+            self.cover_label.config(text="Ninguna imagen seleccionada", fg=Theme.TEXT_MUTED)
         except ImportError:
-            messagebox.showerror("Dependencia Faltante",
-                               "Se requiere 'mutagen' para editar metadatos.\n\nInstala con: pip install mutagen")
+            messagebox.showerror("Error", "Instala mutagen: pip install mutagen")
         except Exception as e:
-            self.logger.error(f"Error applying metadata: {e}")
-            messagebox.showerror("Error", f"Error al aplicar cambios:\n\n{str(e)}")
-            self.editor_status_label.config(text=f"❌ Error: {str(e)}",
-                                           fg=Colors.ERROR)
-
-    def _toggle_custom_cover(self):
-        """Enable/disable custom cover controls"""
-        if self.use_custom_cover_var.get():
-            self.browse_cover_button.configure_state("normal")
-            if self.custom_cover_path:
-                self.clear_cover_button.configure_state("normal")
-        else:
-            self.browse_cover_button.configure_state("disabled")
-            self.clear_cover_button.configure_state("disabled")
-
-    def _choose_custom_cover(self):
-        """Select custom cover image"""
-        filepath = filedialog.askopenfilename(
-            title="Seleccionar portada personalizada",
-            filetypes=Config.SUPPORTED_IMAGE_FORMATS,
-            initialdir=str(Path.home())
-        )
-        if filepath:
-            self.custom_cover_path = filepath
-            filename = Path(filepath).name
-            self.cover_path_label.config(text=filename, foreground=Colors.TEXT_DARK)
-            self.clear_cover_button.configure_state("normal")
-            self._append_log(f"Portada personalizada seleccionada: {filename}")
-
-    def _clear_custom_cover(self):
-        """Clear custom cover selection"""
-        self.custom_cover_path = None
-        self.cover_path_label.config(text="Ninguna seleccionada", foreground=Colors.TEXT_LIGHT)
-        self.clear_cover_button.configure_state("disabled")
-        self._append_log("Portada personalizada eliminada")
-
-    def _paste_from_clipboard(self):
-        try:
-            clipboard_content = self.root.clipboard_get()
-            if clipboard_content and ('http' in clipboard_content.lower()):
-                # Limpiar placeholder si existe
-                if self.url_entry.get() == "Ej: https://youtube.com/watch?v=... o https://soundcloud.com/...":
-                    self.url_entry.delete(0, tk.END)
-                    self.url_entry.config(fg=Colors.TEXT_DARK)
-                self.url_var.set(clipboard_content.strip())
-        except Exception:
-            pass
-
-    def _choose_outdir(self):
-        directory = filedialog.askdirectory(title="Seleccionar carpeta de salida", 
-                                          initialdir=self.outdir_var.get())
-        if directory:
-            self.outdir_var.set(directory)
-
-    def _save_settings(self):
-        self.config.update({
-            'output_dir': self.outdir_var.get(),
-            'bitrate': self.bitrate_var.get(),
-            'format': self.format_var.get(),
-            'create_artist_folders': self.artist_folder_var.get(),
-            'skip_existing': self.skip_existing_var.get(),
-            'save_cover_art': self.save_cover_var.get(),
-            'cover_format': self.cover_format_var.get()
-        })
-        self.config_manager.save_config(self.config)
-        messagebox.showinfo("Configuración", "Configuración guardada correctamente")
-
-    def _reset_settings(self):
-        if messagebox.askyesno("Restaurar configuración", "¿Restaurar todos los valores por defecto?"):
-            defaults = self.config_manager.default_config
-            self.outdir_var.set(defaults['output_dir'])
-            self.bitrate_var.set(defaults['bitrate'])
-            self.format_var.set(defaults['format'])
-            self.artist_folder_var.set(defaults['create_artist_folders'])
-            self.skip_existing_var.set(defaults['skip_existing'])
-            self.save_cover_var.set(defaults['save_cover_art'])
-            self.cover_format_var.set(defaults['cover_format'])
-            messagebox.showinfo("Configuración", "Configuración restaurada")
-
-    def _open_output_folder(self):
-        output_dir = self.outdir_var.get()
-        if os.path.exists(output_dir):
-            try:
-                if os.name == 'nt':
-                    os.startfile(output_dir)
-                elif os.name == 'posix':
-                    os.system(f'open "{output_dir}"' if sys.platform == 'darwin' else f'xdg-open "{output_dir}"')
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo abrir la carpeta: {e}")
-        else:
-            messagebox.showwarning("Carpeta no encontrada", "La carpeta de salida no existe")
-
-    def _open_config_folder(self):
-        config_dir = Path(Config.CONFIG_FILE).parent.absolute()
-        try:
-            if os.name == 'nt':
-                os.startfile(str(config_dir))
-            elif os.name == 'posix':
-                os.system(f'open "{config_dir}"' if sys.platform == 'darwin' else f'xdg-open "{config_dir}"')
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo abrir la carpeta de configuración: {e}")
-
-    def _on_download(self):
-        url = self.url_var.get().strip()
-        
-        # Remover placeholder text si existe
-        if url == "Ej: https://youtube.com/watch?v=... o https://soundcloud.com/...":
-            url = ""
-        
-        if not url:
-            messagebox.showwarning("URL vacía", "Ingresa una URL válida de YouTube, SoundCloud u otra plataforma")
-            return
-        
-        output_dir = self.outdir_var.get()
-        if not os.path.isdir(output_dir):
-            messagebox.showwarning("Directorio inválido", "Selecciona un directorio válido")
-            return
-        
-        custom_cover = None
-        if self.use_custom_cover_var.get():
-            if self.custom_cover_path and os.path.exists(self.custom_cover_path):
-                custom_cover = self.custom_cover_path
-                self._append_log(f"Usando portada personalizada: {Path(custom_cover).name}")
-            else:
-                messagebox.showwarning("Portada no válida", 
-                                     "La portada personalizada seleccionada no existe. Se usará la portada automática.")
-                self.use_custom_cover_var.set(False)
-                self._clear_custom_cover()
-        
-        self.config.update({
-            'output_dir': output_dir,
-            'bitrate': self.bitrate_var.get(),
-            'format': self.format_var.get(),
-            'create_artist_folders': self.artist_folder_var.get(),
-            'skip_existing': self.skip_existing_var.get(),
-            'save_cover_art': self.save_cover_var.get(),
-            'cover_format': self.cover_format_var.get()
-        })
-        
-        self.stop_event.clear()
-        self.progress['value'] = 0
-        self.progress_label.config(text="0%")
-        self.progress.config(mode='determinate')
-        self._clear_log()
-        self._update_info("")
-        self.lbl_status.config(text="Preparando descarga...")
-        
-        self.btn_download.configure_state("disabled")
-        self.btn_cancel.configure_state("normal")
-        self.browse_cover_button.configure_state("disabled")
-        self.clear_cover_button.configure_state("disabled")
-        self.use_custom_cover_check.config(state=tk.DISABLED)
-        
-        self.worker = DownloaderThread(
-            url=url, 
-            config=self.config, 
-            progress_queue=self.progress_queue,
-            stop_event=self.stop_event, 
-            logger=self.logger,
-            custom_cover=custom_cover
-        )
-        self.worker.start()
-
-    def _on_cancel(self):
-        if messagebox.askyesno("Cancelar", "¿Cancelar la descarga actual?"):
-            self.stop_event.set()
-            self.lbl_status.config(text="Cancelando...")
-
+            messagebox.showerror("Error", str(e))
+    
+    # ===== Periodic Check =====
     def _periodic_check(self):
         try:
             while True:
-                msg_type, payload = self.progress_queue.get_nowait()
-                self._handle_progress_message(msg_type, payload)
+                msg_type, *data = self.progress_q.get_nowait()
+                if msg_type == "item_status":
+                    item, status, err = data
+                    item.status = status
+                    if err: item.error = err
+                    self._refresh_queue_list()
+                    if status in (QueueStatus.COMPLETE, QueueStatus.ERROR, QueueStatus.CANCELED):
+                        self.queue_mgr.on_item_done()
+                elif msg_type == "item_progress":
+                    self._refresh_queue_list()
+                elif msg_type == "item_update":
+                    self._refresh_queue_list()
+                elif msg_type == "queue_complete":
+                    self.start_btn.set_enabled(True)
+                    self.cancel_btn.set_enabled(False)
+                    done = len([i for i in self.queue_mgr.queue if i.status == QueueStatus.COMPLETE])
+                    self.status_label.config(text=f"✅ {done} descargados")
+                    messagebox.showinfo("Completado", f"{done} canciones descargadas")
         except queue.Empty:
             pass
-        
-        if self.worker and not self.worker.is_alive():
-            if self.btn_cancel.enabled:
-                self._finish_download()
-        
-        self.root.after(200, self._periodic_check)
-
-    def _handle_progress_message(self, msg_type: str, payload: Any):
-        if msg_type == "progress": 
-            self._update_progress(payload)
-        elif msg_type == "status":
-            self._append_log(payload)
-            self.lbl_status.config(text=payload)
-        elif msg_type == "info": 
-            self._update_info_display(payload)
-        elif msg_type == "complete":
-            self._append_log(f"✅ {payload}")
-            self.lbl_status.config(text=f"✅ {payload}", fg=Colors.SUCCESS)
-            self.progress['value'] = 100
-            self.progress_label.config(text="100%")
-            self._finish_download(success=True)
-        elif msg_type == "error":
-            self._append_log(f"❌ {payload}")
-            self.lbl_status.config(text=f"❌ {payload}", fg=Colors.ERROR)
-            self._finish_download(success=False)
-        elif msg_type == "canceled":
-            self._append_log(f"⚠️ {payload}")
-            self.lbl_status.config(text=f"⚠️ {payload}", fg=Colors.WARNING)
-            self._finish_download(success=False)
-
-    def _update_progress(self, info: Dict[str, Any]):
-        percent = info.get('percent')
-        if percent is not None:
-            progress_val = max(0, min(100, percent))
-            self.progress['value'] = progress_val
-            self.progress_label.config(text=f"{progress_val:.0f}%")
-            
-            downloaded = self._format_bytes(info.get('downloaded', 0))
-            total = self._format_bytes(info.get('total', 0))
-            speed = self._format_speed(info.get('speed', 0))
-            eta = info.get('eta', 0)
-            
-            status = f"{progress_val:.1f}% - {downloaded}"
-            if info.get('total'): status += f" / {total}"
-            if speed: status += f" - {speed}"
-            if eta and eta > 0: status += f" - ETA: {eta}s"
-            self.lbl_status.config(text=status, fg=Colors.TEXT_DARK)
-        else:
-            if self.progress['mode'] != 'indeterminate':
-                self.progress.config(mode='indeterminate')
-                self.progress.start(10)
-            self.progress_label.config(text="...")
-            downloaded = self._format_bytes(info.get('downloaded', 0))
-            self.lbl_status.config(text=f"Descargando... {downloaded}", fg=Colors.TEXT_DARK)
-
-    def _update_info_display(self, info: Dict[str, Any]):
-        self.download_info = info
-        info_text = f"Título: {info.get('title', 'N/A')}\n"
-        info_text += f"Artista: {info.get('artist', 'N/A')}\n"
-        if info.get('duration'):
-            duration = time.strftime('%M:%S', time.gmtime(info['duration']))
-            info_text += f"Duración: {duration}"
-        self._update_info(info_text)
-
-    def _update_info(self, text: str):
-        self.info_text.config(state=tk.NORMAL)
-        self.info_text.delete("1.0", tk.END)
-        self.info_text.insert("1.0", text)
-        self.info_text.config(state=tk.DISABLED)
-
-    def _append_log(self, text: str):
-        timestamp = time.strftime("%H:%M:%S")
-        self.txt_log.config(state=tk.NORMAL)
-        self.txt_log.insert(tk.END, f"[{timestamp}] {text}\n")
-        self.txt_log.see(tk.END)
-        self.txt_log.config(state=tk.DISABLED)
-
-    def _clear_log(self):
-        self.txt_log.config(state=tk.NORMAL)
-        self.txt_log.delete("1.0", tk.END)
-        self.txt_log.config(state=tk.DISABLED)
-
-    def _finish_download(self, success: bool = False):
-        if self.progress['mode'] == 'indeterminate':
-            self.progress.stop()
-            self.progress.config(mode='determinate')
-        
-        if not success:
-            self.progress['value'] = 0
-            self.progress_label.config(text="0%")
-        
-        self.btn_download.configure_state("normal")
-        self.btn_cancel.configure_state("disabled")
-        self.use_custom_cover_check.config(state=tk.NORMAL)
-        
-        if self.use_custom_cover_var.get():
-            self.browse_cover_button.configure_state("normal")
-            if self.custom_cover_path:
-                self.clear_cover_button.configure_state("normal")
-        
-        if success:
-            if self.download_info:
-                title = self.download_info.get('title', 'Audio')
-                artist = self.download_info.get('artist', 'Artista desconocido')
-                cover_msg = ""
-                if self.custom_cover_path:
-                    cover_msg = "\n\n✨ Con portada personalizada"
-                messagebox.showinfo("Descarga Completada",
-                                  f"'{title}' de {artist}{cover_msg}\n\n¡Descarga exitosa!")
-            self.lbl_status.config(text="Descarga completada. ¡Listo para la siguiente!",
-                                 fg=Colors.SUCCESS)
-
-    def _format_bytes(self, bytes_val: int) -> str:
-        if not bytes_val: return "0 B"
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if bytes_val < 1024.0: return f"{bytes_val:.1f} {unit}"
-            bytes_val /= 1024.0
-        return f"{bytes_val:.1f} TB"
-
-    def _format_speed(self, speed: float) -> str:
-        if not speed: return ""
-        return f"{self._format_bytes(speed)}/s"
-
-    def _on_closing(self):
-        if self.worker and self.worker.is_alive():
-            if messagebox.askyesno("Salir", "¿Cancelar descarga y salir?"):
-                self.stop_event.set()
-                self.root.after(100, self._force_close)
-            return
+        self.root.after(150, self._periodic_check)
+    
+    def _on_close(self):
+        self.queue_mgr.cancel_all()
+        self.player.stop()
         self.root.destroy()
 
-    def _force_close(self):
-        try:
-            if self.worker and self.worker.is_alive():
-                self.worker.join(timeout=1.0)
-        except: 
-            pass
-        self.root.destroy()
-
-# ---------------------------
-# Main Entry Point
-# ---------------------------
+# Main
 def main():
-    """Main application entry point"""
     try:
         import yt_dlp
     except ImportError:
-        print("Error: yt-dlp no está instalado. Instala con: pip install yt-dlp")
-        try:
-            root = tk.Tk()
-            root.withdraw()
-            messagebox.showerror("Dependencia Faltante", 
-                               "Error: yt-dlp no está instalado.\n\nPor favor, instálalo ejecutando:\npip install yt-dlp")
-        except:
-            pass
+        tk.Tk().withdraw()
+        messagebox.showerror("Error", "Instala yt-dlp: pip install yt-dlp")
         sys.exit(1)
     
     root = tk.Tk()
-    app = EnhancedApp(root)
-    
-    try:
-        root.mainloop()
-    except KeyboardInterrupt:
-        print("\nInterrumpido por el usuario")
-    except Exception as e:
-        logging.error(f"Unexpected error: {e}")
-        messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado:\n\n{e}")
+    AudioDownloaderApp(root)
+    root.mainloop()
 
 if __name__ == "__main__":
     main()

@@ -7,3 +7,4 @@ hola.cpp
 venv/
 dist/
 build/
+__pycache__

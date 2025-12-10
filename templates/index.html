@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Downloader Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0D1117;
+            --bg-card: #161B22;
+            --bg-input: #21262D;
+            --bg-hover: #30363D;
+            --accent: #1DB954;
+            --accent-hover: #1ED760;
+            --accent-alt: #8B5CF6;
+            --text-primary: #E6EDF3;
+            --text-secondary: #8B949E;
+            --text-muted: #484F58;
+            --border: #30363D;
+        }
+
+        .light {
+            --bg-main: #FFFFFF;
+            --bg-card: #F6F8FA;
+            --bg-input: #FFFFFF;
+            --bg-hover: #F3F4F6;
+            --text-primary: #1F2937;
+            --text-secondary: #6B7280;
+            --text-muted: #9CA3AF;
+            --border: #E5E7EB;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            font-size: 1.8rem;
+        }
+
+        .logo h1 {
+            font-size: 1.3rem;
+        }
+
+        .logo span {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .theme-toggle {
+            background: var(--bg-card);
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 8px 10px;
+            border-radius: 8px;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 1rem;
+            background: var(--bg-card);
+            padding: 4px;
+            border-radius: 10px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .tab:hover:not(.active) {
+            background: var(--bg-hover);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .search-input {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        .options-row {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+        }
+
+        .option-group {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .option-group label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        select {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+        }
+
+        .buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .btn-alt {
+            background: var(--accent-alt);
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Queue & Results */
+        .queue-list,
+        .results-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .queue-item,
+        .result-item {
+            background: var(--bg-input);
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .queue-item:hover,
+        .result-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .queue-item.selected,
+        .result-item.selected {
+            border-color: var(--accent);
+        }
+
+        .queue-icon {
+            font-size: 1.1rem;
+            width: 24px;
+        }
+
+        .queue-info,
+        .result-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .queue-title,
+        .result-title {
+            font-weight: 500;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .queue-artist,
+        .result-artist {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        .result-duration {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .result-checkbox {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent);
+        }
+
+        .progress-bar {
+            height: 3px;
+            background: var(--bg-hover);
+            border-radius: 2px;
+            margin-top: 4px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+
+        .preview-section {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        audio {
+            flex: 1;
+            height: 36px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+
+        .status-text {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+
+        .hint {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .loading {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <span class="logo-icon">🎵</span>
+                <div>
+                    <h1>Audio Downloader</h1><span>SoundCloud • YouTube</span>
+                </div>
+            </div>
+            <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+        </header>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('direct')">⬇️ Descarga Directa</button>
+            <button class="tab" onclick="showTab('search')">🔍 Búsqueda</button>
+        </div>
+
+        <!-- TAB 1: Direct Download -->
+        <div id="tab-direct" class="tab-content active">
+            <div class="card">
+                <div class="card-title">Pegar URLs o nombres (uno por línea)</div>
+                <textarea id="queryInput" placeholder="Daft Punk - Get Lucky
+https://soundcloud.com/artista/cancion
+Calvin Harris - Summer"></textarea>
+                <p class="hint">💡 Escribe nombre de canción para buscar o pega URL directa</p>
+                <div class="options-row">
+                    <div class="option-group"><label>Proveedor</label><select id="provider">
+                            <option value="soundcloud">SoundCloud</option>
+                            <option value="youtube">YouTube</option>
+                        </select></div>
+                    <div class="option-group"><label>Formato</label><select id="format">
+                            <option value="mp3">MP3</option>
+                            <option value="m4a">M4A</option>
+                            <option value="flac">FLAC</option>
+                        </select></div>
+                    <div class="option-group"><label>Calidad</label><select id="bitrate">
+                            <option value="320" selected>320 kbps</option>
+                            <option value="256">256 kbps</option>
+                            <option value="192">192 kbps</option>
+                        </select></div>
+                </div>
+                <div class="buttons">
+                    <button class="btn btn-primary" onclick="startDownload()">⬇️ Descargar Todo</button>
+                    <button class="btn btn-secondary" onclick="clearAll()">🗑️ Limpiar</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📥 Cola de Descargas <span id="queueCount"
+                        style="font-weight:400;color:var(--text-secondary)"></span></div>
+                <div class="queue-list" id="queueList">
+                    <div class="empty-state">No hay descargas</div>
+                </div>
+                <div class="preview-section" id="previewSection" style="display:none;">
+                    <button class="btn btn-secondary" onclick="playPreview()" id="previewBtn">▶️ Preview</button>
+                    <audio id="audioPlayer" controls></audio>
+                    <button class="btn btn-secondary" onclick="downloadFile()" id="downloadBtn" disabled>💾
+                        Guardar</button>
+                </div>
+                <p class="status-text" id="statusText"></p>
+            </div>
+        </div>
+
+        <!-- TAB 2: Search -->
+        <div id="tab-search" class="tab-content">
+            <div class="card">
+                <div class="card-title">🔍 Buscar y Seleccionar Canciones</div>
+                <div style="display:flex;gap:0.5rem;">
+                    <input type="text" class="search-input" id="searchInput" placeholder="Ej: Daft Punk - Get Lucky"
+                        onkeypress="if(event.key==='Enter')searchSongs()" style="flex:1">
+                    <button class="btn btn-primary" onclick="searchSongs()" id="searchBtn">Buscar</button>
+                </div>
+                <div class="options-row">
+                    <div class="option-group"><label>Proveedor</label><select id="searchProvider">
+                            <option value="soundcloud">SoundCloud</option>
+                            <option value="youtube">YouTube</option>
+                        </select></div>
+                </div>
+            </div>
+
+            <div class="card" id="resultsCard" style="display:none;">
+                <div class="card-title">📋 Resultados - Selecciona las canciones</div>
+                <div class="results-list" id="resultsList"></div>
+                <div class="buttons">
+                    <button class="btn btn-primary" onclick="downloadSelected()" id="downloadSelectedBtn" disabled>⬇️
+                        Descargar Seleccionados</button>
+                    <button class="btn btn-secondary" onclick="selectAllResults()">Seleccionar Todo</button>
+                    <button class="btn btn-secondary" onclick="clearResults()">Limpiar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let queue = [], selectedItem = null, pollInterval = null;
+        let searchResults = [], selectedResults = new Set();
+
+        // Theme
+        function toggleTheme() {
+            document.body.classList.toggle('light');
+            document.querySelector('.theme-toggle').textContent = document.body.classList.contains('light') ? '☀️' : '🌙';
+            localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+        }
+        if (localStorage.getItem('theme') === 'light') { document.body.classList.add('light'); document.querySelector('.theme-toggle').textContent = '☀️'; }
+
+        // Tabs
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelector(`.tab:nth-child(${tab === 'direct' ? 1 : 2})`).classList.add('active');
+            document.getElementById(`tab-${tab}`).classList.add('active');
+        }
+
+        // ===== DIRECT DOWNLOAD =====
+        async function startDownload() {
+            const text = document.getElementById('queryInput').value.trim();
+            if (!text) { alert('Ingresa URLs o nombres'); return; }
+            const queries = text.split('\n').filter(q => q.trim());
+            const provider = document.getElementById('provider').value;
+            const format = document.getElementById('format').value;
+            const bitrate = document.getElementById('bitrate').value;
+            try {
+                const res = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ queries, provider, format, bitrate }) });
+                const data = await res.json();
+                if (data.success) { startPolling(); document.getElementById('statusText').textContent = 'Iniciando...'; }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        function startPolling() { if (pollInterval) clearInterval(pollInterval); pollInterval = setInterval(updateQueue, 1000); updateQueue(); }
+
+        async function updateQueue() {
+            try {
+                const res = await fetch('/api/queue'); queue = await res.json(); renderQueue();
+                if (queue.length > 0 && queue.every(i => ['complete', 'error'].includes(i.status))) {
+                    clearInterval(pollInterval); document.getElementById('statusText').textContent = '✅ Completado';
+                }
+            } catch (e) { }
+        }
+
+        function renderQueue() {
+            const list = document.getElementById('queueList');
+            document.getElementById('queueCount').textContent = queue.length ? `(${queue.length})` : '';
+            if (queue.length === 0) { list.innerHTML = '<div class="empty-state">No hay descargas</div>'; document.getElementById('previewSection').style.display = 'none'; return; }
+            const icons = { pending: '⏸️', searching: '🔍', downloading: '⏳', processing: '⚙️', complete: '✅', error: '❌' };
+            list.innerHTML = queue.map(item => `
+                <div class="queue-item ${selectedItem === item.id ? 'selected' : ''}" onclick="selectItem('${item.id}')">
+                    <div class="queue-icon">${icons[item.status] || '?'}</div>
+                    <div class="queue-info">
+                        <div class="queue-title">${escapeHtml(item.title)}</div>
+                        <div class="queue-artist">${escapeHtml(item.artist || '')}</div>
+                        ${item.status === 'downloading' ? `<div class="progress-bar"><div class="progress-fill" style="width:${item.progress}%"></div></div>` : ''}
+                    </div>
+                </div>`).join('');
+        }
+
+        function selectItem(id) {
+            selectedItem = id; renderQueue();
+            const item = queue.find(i => i.id === id);
+            document.getElementById('previewSection').style.display = item ? 'flex' : 'none';
+            document.getElementById('downloadBtn').disabled = item?.status !== 'complete';
+        }
+
+        async function playPreview() {
+            if (!selectedItem) return;
+            const btn = document.getElementById('previewBtn'); btn.innerHTML = '<span class="loading">⏳</span>'; btn.disabled = true;
+            try { document.getElementById('audioPlayer').src = `/api/preview/${selectedItem}`; document.getElementById('audioPlayer').play(); }
+            catch (e) { alert('Error: ' + e.message); }
+            finally { btn.innerHTML = '▶️ Preview'; btn.disabled = false; }
+        }
+
+        function downloadFile() { if (selectedItem) window.location.href = `/api/download-file/${selectedItem}`; }
+
+        function clearAll() {
+            document.getElementById('queryInput').value = '';
+            fetch('/api/queue/clear', { method: 'POST' });
+            queue = []; selectedItem = null; renderQueue();
+            document.getElementById('statusText').textContent = '';
+        }
+
+        // ===== SEARCH =====
+        async function searchSongs() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) { alert('Ingresa nombre de canción'); return; }
+            const btn = document.getElementById('searchBtn'); btn.innerHTML = '<span class="loading">⏳</span>'; btn.disabled = true;
+            try {
+                const provider = document.getElementById('searchProvider').value;
+                const res = await fetch('/api/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, provider }) });
+                const data = await res.json();
+                searchResults = data.results || []; selectedResults.clear(); renderResults();
+            } catch (e) { alert('Error: ' + e.message); }
+            finally { btn.innerHTML = 'Buscar'; btn.disabled = false; }
+        }
+
+        function renderResults() {
+            const card = document.getElementById('resultsCard'), list = document.getElementById('resultsList');
+            if (searchResults.length === 0) { card.style.display = 'none'; return; }
+            card.style.display = 'block';
+            list.innerHTML = searchResults.map((r, i) => `
+                <div class="result-item ${selectedResults.has(i) ? 'selected' : ''}" onclick="toggleResult(${i})">
+                    <input type="checkbox" class="result-checkbox" ${selectedResults.has(i) ? 'checked' : ''} onclick="event.stopPropagation(); toggleResult(${i})">
+                    <div class="result-info"><div class="result-title">${escapeHtml(r.title)}</div><div class="result-artist">${escapeHtml(r.artist)}</div></div>
+                    <div class="result-duration">${r.duration}</div>
+                </div>`).join('');
+            document.getElementById('downloadSelectedBtn').disabled = selectedResults.size === 0;
+        }
+
+        function toggleResult(i) { selectedResults.has(i) ? selectedResults.delete(i) : selectedResults.add(i); renderResults(); }
+        function selectAllResults() { if (selectedResults.size === searchResults.length) selectedResults.clear(); else searchResults.forEach((_, i) => selectedResults.add(i)); renderResults(); }
+        function clearResults() { searchResults = []; selectedResults.clear(); document.getElementById('resultsCard').style.display = 'none'; }
+
+        async function downloadSelected() {
+            if (selectedResults.size === 0) return;
+            const urls = [...selectedResults].map(i => searchResults[i].url);
+            const format = document.getElementById('format').value;
+            const bitrate = document.getElementById('bitrate').value;
+            const provider = document.getElementById('searchProvider').value;
+            try {
+                const res = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ queries: urls, provider, format, bitrate }) });
+                if ((await res.json()).success) { clearResults(); showTab('direct'); startPolling(); }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+        renderQueue();
+    </script>
+</body>
+
+</html>
