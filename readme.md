@@ -1,28 +1,27 @@
-# 🎵 Audio Downloader Pro
+# Audio Downloader Pro
 
 Descargador de audio desde **SoundCloud** y **YouTube Music** con interfaz moderna.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Flask](https://img.shields.io/badge/Flask-3.0+-green.svg)
-![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## ✨ Características
+## Características
 
-- 🔍 **Búsqueda inteligente** - Busca por nombre o pega URL directa
-- 📥 **Cola de descargas** - Descarga múltiples canciones a la vez
-- 🎧 **Preview de audio** - Escucha antes de descargar
-- 🎨 **Temas claro/oscuro** - Interfaz moderna estilo Spotify
-- 📝 **Editor de metadatos** - Edita título, artista, álbum y carátula
-- 🍎 **Compatible con Apple Music** - Metadatos optimizados
+- **Búsqueda inteligente** - Busca por nombre o pega URL directa
+- **Cola de descargas** - Descarga múltiples canciones a la vez
+- **Preview de audio** - Escucha antes de descargar
+- **Temas claro/oscuro** - Interfaz moderna estilo Spotify
+- **Editor de metadatos** - Edita título, artista, álbum y carátula
+- **Compatible con Apple Music** - Metadatos optimizados
 
-## 🖥️ Versiones
+## Versiones
 
 | Versión | Archivo | Descripción |
 |---------|---------|-------------|
 | **Desktop** | `soundcloud_downloader_improved.py` | App de escritorio con Tkinter |
 | **Web** | `web_downloader.py` | Servidor Flask con UI web moderna |
 
-## 🚀 Instalación
+## Instalación
 
 ### Requisitos
 - Python 3.8+
@@ -32,8 +31,8 @@ Descargador de audio desde **SoundCloud** y **YouTube Music** con interfaz moder
 
 ```bash
 # 1. Clonar repositorio
-git clone https://github.com/tu-usuario/SoundCloudApp.git
-cd SoundCloudApp
+git clone https://github.com/spooky1703/SoundcloudDWN.git
+cd SoundcloudDWN
 
 # 2. Crear entorno virtual
 python3 -m venv venv
@@ -51,7 +50,7 @@ sudo apt install ffmpeg
 # Windows: descargar de https://ffmpeg.org/download.html
 ```
 
-## 📦 Dependencias
+## Dependencias
 
 ```txt
 yt-dlp>=2024.1.0
@@ -60,12 +59,7 @@ flask>=3.0.0
 pygame>=2.5.0
 ```
 
-Crear `requirements.txt`:
-```bash
-pip freeze > requirements.txt
-```
-
-## 🎯 Uso
+## Uso
 
 ### Versión Web (Recomendada)
 
@@ -89,7 +83,7 @@ python3 soundcloud_downloader_improved.py
 1. **Cola de Descargas**: Interfaz principal de descarga
 2. **Editor Metadatos**: Edita información de archivos MP3/M4A/FLAC
 
-## 🔧 Configuración
+## Configuración
 
 Los archivos se descargan en:
 - **Web**: `~/Downloads/AudioDownloaderWeb/`
@@ -105,7 +99,7 @@ Los archivos se descargan en:
 - SoundCloud (`scsearch:`)
 - YouTube Music (`ytsearch:`)
 
-## 📁 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 SoundCloudApp/
@@ -118,7 +112,7 @@ SoundCloudApp/
 └── README.md
 ```
 
-## 🛠️ API Endpoints (Versión Web)
+## API Endpoints (Versión Web)
 
 | Endpoint | Método | Descripción |
 |----------|--------|-------------|
@@ -129,37 +123,8 @@ SoundCloudApp/
 | `/api/download-file/<id>` | GET | Descargar archivo |
 | `/api/queue/clear` | POST | Limpiar cola |
 
-## 🎨 Capturas
-
-### Versión Web
-- Interfaz dark mode moderna
-- Pestañas para descarga directa y búsqueda
-- Preview de audio integrado
-- Cola de descargas con progreso
-
-### Versión Desktop
-- UI estilo Spotify
-- Editor de metadatos con carátula
-- Toggle tema claro/oscuro
-
-## ⚠️ Notas
+## Notas
 
 - La calidad de audio depende del proveedor (SoundCloud suele tener mejor calidad)
 - YouTube requiere un JavaScript runtime para algunos formatos (ver advertencias)
 - Los archivos se nombran automáticamente como `Artista - Título.ext`
-
-## 📄 Licencia
-
-MIT License - Úsalo libremente para proyectos personales y comerciales.
-
-## 🤝 Contribuir
-
-1. Fork el repositorio
-2. Crea una rama (`git checkout -b feature/nueva-funcion`)
-3. Commit cambios (`git commit -m 'Añadir nueva función'`)
-4. Push (`git push origin feature/nueva-funcion`)
-5. Abre un Pull Request
-
----
-
-**Hecho con ❤️ para los amantes de la música**
