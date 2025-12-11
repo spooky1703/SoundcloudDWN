@@ -15,6 +15,7 @@
             --accent: #1DB954;
             --accent-hover: #1ED760;
             --accent-alt: #8B5CF6;
+            --apple: #FC3C44;
             --text-primary: #E6EDF3;
             --text-secondary: #8B949E;
             --text-muted: #484F58;
@@ -86,7 +87,6 @@
             border-radius: 8px;
         }
 
-        /* Tabs */
         .tabs {
             display: flex;
             gap: 4px;
@@ -98,11 +98,11 @@
 
         .tab {
             flex: 1;
-            padding: 10px 16px;
+            padding: 10px 12px;
             border: none;
             background: transparent;
             color: var(--text-secondary);
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 500;
             cursor: pointer;
             border-radius: 8px;
@@ -112,6 +112,11 @@
         .tab.active {
             background: var(--accent);
             color: #000;
+        }
+
+        .tab.apple.active {
+            background: var(--apple);
+            color: #fff;
         }
 
         .tab:hover:not(.active) {
@@ -228,8 +233,8 @@
             color: var(--text-primary);
         }
 
-        .btn-alt {
-            background: var(--accent-alt);
+        .btn-apple {
+            background: var(--apple);
             color: white;
         }
 
@@ -238,9 +243,9 @@
             cursor: not-allowed;
         }
 
-        /* Queue & Results */
         .queue-list,
-        .results-list {
+        .results-list,
+        .playlist-songs {
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -249,7 +254,8 @@
         }
 
         .queue-item,
-        .result-item {
+        .result-item,
+        .song-item {
             background: var(--bg-input);
             border-radius: 8px;
             padding: 10px 14px;
@@ -262,12 +268,14 @@
         }
 
         .queue-item:hover,
-        .result-item:hover {
+        .result-item:hover,
+        .song-item:hover {
             background: var(--bg-hover);
         }
 
         .queue-item.selected,
-        .result-item.selected {
+        .result-item.selected,
+        .song-item.selected {
             border-color: var(--accent);
         }
 
@@ -277,13 +285,15 @@
         }
 
         .queue-info,
-        .result-info {
+        .result-info,
+        .song-info {
             flex: 1;
             min-width: 0;
         }
 
         .queue-title,
-        .result-title {
+        .result-title,
+        .song-title {
             font-weight: 500;
             font-size: 0.85rem;
             white-space: nowrap;
@@ -292,7 +302,8 @@
         }
 
         .queue-artist,
-        .result-artist {
+        .result-artist,
+        .song-artist {
             color: var(--text-secondary);
             font-size: 0.75rem;
         }
@@ -364,6 +375,15 @@
                 transform: rotate(360deg);
             }
         }
+
+        .song-count {
+            background: var(--accent);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
     </style>
 </head>
 
@@ -373,7 +393,7 @@
             <div class="logo">
                 <span class="logo-icon">🎵</span>
                 <div>
-                    <h1>Audio Downloader</h1><span>SoundCloud • YouTube</span>
+                    <h1>Audio Downloader</h1><span>SoundCloud • YouTube • Apple Music</span>
                 </div>
             </div>
             <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
@@ -381,8 +401,9 @@
 
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab active" onclick="showTab('direct')">⬇️ Descarga Directa</button>
-            <button class="tab" onclick="showTab('search')">🔍 Búsqueda</button>
+            <button class="tab active" onclick="showTab('direct')">Descarga Directa</button>
+            <button class="tab" onclick="showTab('search')">Búsqueda</button>
+            <button class="tab apple" onclick="showTab('apple')">Apple Music</button>
         </div>
 
         <!-- TAB 1: Direct Download -->
@@ -392,7 +413,6 @@
                 <textarea id="queryInput" placeholder="Daft Punk - Get Lucky
 https://soundcloud.com/artista/cancion
 Calvin Harris - Summer"></textarea>
-                <p class="hint">💡 Escribe nombre de canción para buscar o pega URL directa</p>
                 <div class="options-row">
                     <div class="option-group"><label>Proveedor</label><select id="provider">
                             <option value="soundcloud">SoundCloud</option>
@@ -410,22 +430,22 @@ Calvin Harris - Summer"></textarea>
                         </select></div>
                 </div>
                 <div class="buttons">
-                    <button class="btn btn-primary" onclick="startDownload()">⬇️ Descargar Todo</button>
-                    <button class="btn btn-secondary" onclick="clearAll()">🗑️ Limpiar</button>
+                    <button class="btn btn-primary" onclick="startDownload()">Descargar Todo</button>
+                    <button class="btn btn-secondary" onclick="clearAll()">Limpiar</button>
                 </div>
             </div>
 
             <div class="card">
-                <div class="card-title">📥 Cola de Descargas <span id="queueCount"
+                <div class="card-title">Cola de Descargas <span id="queueCount"
                         style="font-weight:400;color:var(--text-secondary)"></span></div>
                 <div class="queue-list" id="queueList">
                     <div class="empty-state">No hay descargas</div>
                 </div>
                 <div class="preview-section" id="previewSection" style="display:none;">
-                    <button class="btn btn-secondary" onclick="playPreview()" id="previewBtn">▶️ Preview</button>
+                    <button class="btn btn-secondary" onclick="playPreview()" id="previewBtn">▶ Preview</button>
                     <audio id="audioPlayer" controls></audio>
-                    <button class="btn btn-secondary" onclick="downloadFile()" id="downloadBtn" disabled>💾
-                        Guardar</button>
+                    <button class="btn btn-secondary" onclick="downloadFile()" id="downloadBtn"
+                        disabled>Guardar</button>
                 </div>
                 <p class="status-text" id="statusText"></p>
             </div>
@@ -434,7 +454,7 @@ Calvin Harris - Summer"></textarea>
         <!-- TAB 2: Search -->
         <div id="tab-search" class="tab-content">
             <div class="card">
-                <div class="card-title">🔍 Buscar y Seleccionar Canciones</div>
+                <div class="card-title">Buscar y Seleccionar Canciones</div>
                 <div style="display:flex;gap:0.5rem;">
                     <input type="text" class="search-input" id="searchInput" placeholder="Ej: Daft Punk - Get Lucky"
                         onkeypress="if(event.key==='Enter')searchSongs()" style="flex:1">
@@ -447,15 +467,42 @@ Calvin Harris - Summer"></textarea>
                         </select></div>
                 </div>
             </div>
-
             <div class="card" id="resultsCard" style="display:none;">
-                <div class="card-title">📋 Resultados - Selecciona las canciones</div>
+                <div class="card-title">Resultados</div>
                 <div class="results-list" id="resultsList"></div>
                 <div class="buttons">
-                    <button class="btn btn-primary" onclick="downloadSelected()" id="downloadSelectedBtn" disabled>⬇️
-                        Descargar Seleccionados</button>
+                    <button class="btn btn-primary" onclick="downloadSelected()" id="downloadSelectedBtn"
+                        disabled>Descargar Seleccionados</button>
                     <button class="btn btn-secondary" onclick="selectAllResults()">Seleccionar Todo</button>
                     <button class="btn btn-secondary" onclick="clearResults()">Limpiar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Apple Music -->
+        <div id="tab-apple" class="tab-content">
+            <div class="card">
+                <div class="card-title">Importar Playlist de Apple Music</div>
+                <div style="display:flex;gap:0.5rem;">
+                    <input type="text" class="search-input" id="appleUrl"
+                        placeholder="aun no funciona ajajajajja, se aceptan ayudas" style="flex:1">
+                    <button class="btn btn-apple" onclick="importApplePlaylist()" id="importBtn">Importar</button>
+                </div>
+                <p class="hint">Pega el link de una playlist pública de Apple Music. Las canciones se buscarán en
+                    SoundCloud/YouTube.</p>
+            </div>
+            <div class="card" id="appleResultsCard" style="display:none;">
+                <div class="card-title">Canciones de la Playlist <span class="song-count" id="songCount">0</span></div>
+                <div class="playlist-songs" id="appleSongsList"></div>
+                <div class="options-row">
+                    <div class="option-group"><label>Buscar en</label><select id="appleProvider">
+                            <option value="soundcloud">SoundCloud</option>
+                            <option value="youtube">YouTube</option>
+                        </select></div>
+                </div>
+                <div class="buttons">
+                    <button class="btn btn-primary" onclick="downloadAppleSongs()">Descargar Todo</button>
+                    <button class="btn btn-secondary" onclick="clearApple()">Limpiar</button>
                 </div>
             </div>
         </div>
@@ -464,6 +511,7 @@ Calvin Harris - Summer"></textarea>
     <script>
         let queue = [], selectedItem = null, pollInterval = null;
         let searchResults = [], selectedResults = new Set();
+        let appleSongs = [];
 
         // Theme
         function toggleTheme() {
@@ -477,7 +525,8 @@ Calvin Harris - Summer"></textarea>
         function showTab(tab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.querySelector(`.tab:nth-child(${tab === 'direct' ? 1 : 2})`).classList.add('active');
+            const tabIndex = tab === 'direct' ? 0 : tab === 'search' ? 1 : 2;
+            document.querySelectorAll('.tab')[tabIndex].classList.add('active');
             document.getElementById(`tab-${tab}`).classList.add('active');
         }
 
@@ -502,7 +551,7 @@ Calvin Harris - Summer"></textarea>
             try {
                 const res = await fetch('/api/queue'); queue = await res.json(); renderQueue();
                 if (queue.length > 0 && queue.every(i => ['complete', 'error'].includes(i.status))) {
-                    clearInterval(pollInterval); document.getElementById('statusText').textContent = '✅ Completado';
+                    clearInterval(pollInterval); document.getElementById('statusText').textContent = 'Completado';
                 }
             } catch (e) { }
         }
@@ -511,7 +560,7 @@ Calvin Harris - Summer"></textarea>
             const list = document.getElementById('queueList');
             document.getElementById('queueCount').textContent = queue.length ? `(${queue.length})` : '';
             if (queue.length === 0) { list.innerHTML = '<div class="empty-state">No hay descargas</div>'; document.getElementById('previewSection').style.display = 'none'; return; }
-            const icons = { pending: '⏸️', searching: '🔍', downloading: '⏳', processing: '⚙️', complete: '✅', error: '❌' };
+            const icons = { pending: '⏸', searching: '🔍', downloading: '⏳', processing: '⚙', complete: '✓', error: '✗' };
             list.innerHTML = queue.map(item => `
                 <div class="queue-item ${selectedItem === item.id ? 'selected' : ''}" onclick="selectItem('${item.id}')">
                     <div class="queue-icon">${icons[item.status] || '?'}</div>
@@ -535,7 +584,7 @@ Calvin Harris - Summer"></textarea>
             const btn = document.getElementById('previewBtn'); btn.innerHTML = '<span class="loading">⏳</span>'; btn.disabled = true;
             try { document.getElementById('audioPlayer').src = `/api/preview/${selectedItem}`; document.getElementById('audioPlayer').play(); }
             catch (e) { alert('Error: ' + e.message); }
-            finally { btn.innerHTML = '▶️ Preview'; btn.disabled = false; }
+            finally { btn.innerHTML = '▶ Preview'; btn.disabled = false; }
         }
 
         function downloadFile() { if (selectedItem) window.location.href = `/api/download-file/${selectedItem}`; }
@@ -588,6 +637,91 @@ Calvin Harris - Summer"></textarea>
                 const res = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ queries: urls, provider, format, bitrate }) });
                 if ((await res.json()).success) { clearResults(); showTab('direct'); startPolling(); }
             } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        // ===== APPLE MUSIC =====
+        async function importApplePlaylist() {
+            const url = document.getElementById('appleUrl').value.trim();
+            if (!url) { alert('Pega el link de la playlist'); return; }
+            if (!url.includes('music.apple.com')) { alert('El link debe ser de music.apple.com'); return; }
+
+            const btn = document.getElementById('importBtn');
+            btn.innerHTML = '<span class="loading">⏳</span> Importando...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/import-playlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await res.json();
+
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                appleSongs = data.songs || [];
+                renderAppleSongs();
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                btn.innerHTML = 'Importar';
+                btn.disabled = false;
+            }
+        }
+
+        function renderAppleSongs() {
+            const card = document.getElementById('appleResultsCard');
+            const list = document.getElementById('appleSongsList');
+
+            if (appleSongs.length === 0) {
+                card.style.display = 'none';
+                return;
+            }
+
+            card.style.display = 'block';
+            document.getElementById('songCount').textContent = appleSongs.length;
+
+            list.innerHTML = appleSongs.map((s, i) => `
+                <div class="song-item">
+                    <div class="song-info">
+                        <div class="song-title">${escapeHtml(s.title)}</div>
+                        <div class="song-artist">${escapeHtml(s.artist)}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function downloadAppleSongs() {
+            if (appleSongs.length === 0) return;
+
+            const queries = appleSongs.map(s => s.query);
+            const provider = document.getElementById('appleProvider').value;
+            const format = document.getElementById('format').value;
+            const bitrate = document.getElementById('bitrate').value;
+
+            try {
+                const res = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ queries, provider, format, bitrate })
+                });
+
+                if ((await res.json()).success) {
+                    showTab('direct');
+                    startPolling();
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        function clearApple() {
+            appleSongs = [];
+            document.getElementById('appleUrl').value = '';
+            document.getElementById('appleResultsCard').style.display = 'none';
         }
 
         function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }

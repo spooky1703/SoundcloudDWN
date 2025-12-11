@@ -12,8 +12,10 @@ import queue
 import time
 import tempfile
 import shutil
+import re
+import urllib.request
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from flask import Flask, render_template, request, jsonify, send_file, Response
 import yt_dlp
 
@@ -250,12 +252,140 @@ def search_songs(query: str, provider: str, limit: int = 12):
         return []
 
 
+def scrape_apple_music_playlist(url: str) -> List[Dict]:
+    """
+    Scrape Apple Music playlist to extract song names.
+    Returns list of {title, artist} for each track.
+    """
+    songs = []
+    
+    try:
+        # Validate URL
+        if 'music.apple.com' not in url:
+            return []
+        
+        # Fetch the page
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+        
+        # Disable SSL verification
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15, context=ssl_context) as response:
+            html = response.read().decode('utf-8')
+        
+        # Method 1: Extract from JSON-LD schema
+        json_ld_pattern = r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>'
+        json_matches = re.findall(json_ld_pattern, html, re.DOTALL)
+        
+        for json_str in json_matches:
+            try:
+                data = json.loads(json_str)
+                if isinstance(data, dict) and data.get('@type') == 'MusicPlaylist':
+                    tracks = data.get('track', [])
+                    for track in tracks:
+                        if isinstance(track, dict):
+                            name = track.get('name', '')
+                            
+                            # Try multiple ways to get artist
+                            artist = ''
+                            if 'byArtist' in track:
+                                artist_data = track['byArtist']
+                                if isinstance(artist_data, str):
+                                    artist = artist_data
+                                elif isinstance(artist_data, dict):
+                                    artist = artist_data.get('name', '') or artist_data.get('@id', '')
+                                elif isinstance(artist_data, list) and artist_data:
+                                    first = artist_data[0]
+                                    if isinstance(first, str):
+                                        artist = first
+                                    elif isinstance(first, dict):
+                                        artist = first.get('name', '')
+                            
+                            # Fallback to other fields
+                            if not artist:
+                                artist = track.get('creator', '') or track.get('author', '')
+                            
+                            if name:
+                                songs.append({
+                                    'title': name,
+                                    'artist': artist,
+                                    'query': f"{artist} - {name}" if artist else name
+                                })
+            except json.JSONDecodeError:
+                continue
+        
+        # Method 2: Fallback - parse meta tags and song-name classes
+        if not songs:
+            # Try to find song names in meta tags or specific patterns
+            song_patterns = [
+                r'data-testid="track-title"[^>]*>([^<]+)</span>',
+                r'class="songs-list-row__song-name"[^>]*>([^<]+)<',
+                r'"name"\s*:\s*"([^"]+)"[^}]*"@type"\s*:\s*"MusicRecording"',
+            ]
+            
+            for pattern in song_patterns:
+                matches = re.findall(pattern, html)
+                for match in matches:
+                    if match and len(match) > 2:
+                        songs.append({
+                            'title': match.strip(),
+                            'artist': '',
+                            'query': match.strip()
+                        })
+        
+        # Remove duplicates
+        seen = set()
+        unique_songs = []
+        for song in songs:
+            key = song['query'].lower()
+            if key not in seen:
+                seen.add(key)
+                unique_songs.append(song)
+        
+        return unique_songs[:50]  # Limit to 50 songs
+        
+    except Exception as e:
+        print(f"Apple Music scrape error: {e}")
+        return []
+
+
 # ---------------------------
 # API Routes
 # ---------------------------
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/api/import-playlist', methods=['POST'])
+def import_playlist():
+    """Import songs from Apple Music playlist"""
+    data = request.json
+    url = data.get('url', '').strip()
+    
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+    
+    if 'music.apple.com' not in url:
+        return jsonify({"error": "URL must be from music.apple.com"}), 400
+    
+    songs = scrape_apple_music_playlist(url)
+    
+    if not songs:
+        return jsonify({"error": "Could not extract songs. Make sure the playlist is public."}), 400
+    
+    return jsonify({
+        "success": True,
+        "count": len(songs),
+        "songs": songs
+    })
 
 @app.route('/api/search', methods=['POST'])
 def api_search():

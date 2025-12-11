@@ -370,7 +370,7 @@ class ModernButton(tk.Canvas):
 class AudioDownloaderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Audio Downloader Pro")
+        self.root.title("DESCARGADOR CABRONSOTE")
         self.root.geometry("700x800")
         self.root.minsize(600, 700)
         
@@ -426,8 +426,8 @@ class AudioDownloaderApp:
         left = tk.Frame(header, bg=Theme.BG_MAIN)
         left.pack(side=tk.LEFT)
         
-        tk.Label(left, text="🎵", font=('SF Pro Display', 26), bg=Theme.BG_MAIN, fg=Theme.ACCENT).pack(side=tk.LEFT, padx=(0, 8))
-        tk.Label(left, text="Audio Downloader Pro", font=('SF Pro Display', 20, 'bold'),
+        tk.Label(left, text="", font=('SF Pro Display', 26), bg=Theme.BG_MAIN, fg=Theme.ACCENT).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(left, text="DESCARGADOR CABRONSOTE", font=('SF Pro Display', 20, 'bold'),
                 bg=Theme.BG_MAIN, fg=Theme.TEXT_PRIMARY).pack(side=tk.LEFT)
         
         # Theme toggle
